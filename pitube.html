@@ -756,7 +756,8 @@ async function playFromSearch(idx) {
   const v = results[idx];
   plCurrentIdx = -1; // pas dans la playlist
   document.querySelectorAll('.card').forEach(c => c.classList.remove('playing'));
-  grid.querySelector(`[data-idx="${idx}"]`)?.classList.add('playing');
+  const activeCard = grid.querySelector('[data-idx="' + idx + '"]');
+  if (activeCard) activeCard.classList.add('playing');
   await startAudio(v);
 }
 
