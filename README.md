@@ -1,6 +1,6 @@
 # PiTube
 
-Lecteur YouTube audio ultra-léger pour Raspberry Pi.  
+Very light Youtube front solution for low-specs Raspberry Pi
 Front HTML statique + backend Flask/yt-dlp. Pas de vidéo, juste l'audio — idéal pour les petites configs.
 
 ## Installation
@@ -12,18 +12,18 @@ pip install -r requirements.txt
 sudo apt install ffmpeg
 ```
 
-## Lancement
+## Launch
 
 ```bash
 python3 server.py
 ```
 
-Ouvrir `pitube.html` dans le navigateur.  
-Si le front tourne sur une autre machine que le Pi, éditer la ligne `const API = 'http://localhost:5000'` dans `pitube.html`.
+Open `pitube.html` in your browser.
+If the front is not running on the same machine than the Pi, edit the line `const API = 'http://localhost:5000'` in `pitube.html`.
 
-## Mise à jour
+## Updates
 
-yt-dlp doit être maintenu à jour régulièrement, sinon l'extraction audio casse :
+yt-dlp should be kept up-to-date, else the audio extraction might fail :
 
 ```bash
 pip install -U yt-dlp
