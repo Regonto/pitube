@@ -1,7 +1,7 @@
 # PiTube
 
 Very light Youtube front solution for low-specs Raspberry Pi
-Front HTML statique + backend Flask/yt-dlp. Pas de vidéo, juste l'audio — idéal pour les petites configs.
+Front HTML statique + backend Flask/yt-dlp. Only audio, no video.
 
 ## Installation
 
