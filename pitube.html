@@ -452,16 +452,16 @@
 
 <header>
   <a class="logo" href="#">
-    <svg width="90" height="20" viewBox="0 0 90 20" fill="none">
-      <rect width="25" height="20" rx="4" fill="var(--red)"/>
-      <polygon points="10,5 10,15 19,10" fill="white"/>
-      <text x="30" y="15" font-family="Arial" font-weight="700" font-size="14" fill="#f1f1f1">PiTube</text>
+    <svg width="130" height="30" viewBox="0 0 130 30" fill="none">
+      <rect width="36" height="30" rx="6" fill="var(--red)"/>
+      <polygon points="14,7 14,23 28,15" fill="white"/>
+      <text x="44" y="22" font-family="Arial" font-weight="700" font-size="20" fill="#f1f1f1">PiTube</text>
     </svg>
   </a>
 
   <form class="search-bar" id="search-form" action="javascript:void(0)">
-    <input type="search" id="search-input" placeholder="Rechercher…" autocomplete="off" />
-    <button type="submit" aria-label="Chercher">🔍</button>
+    <input type="search" id="search-input" placeholder="Search…" autocomplete="off" />
+    <button type="submit" aria-label="Search">🔍</button>
   </form>
 </header>
 
@@ -471,10 +471,10 @@
       <rect width="80" height="80" rx="12" fill="#272727"/>
       <polygon points="28,20 28,60 62,40" fill="#555"/>
     </svg>
-    <p>Cherche quelque chose pour commencer</p>
+    <p>Search something to get started</p>
   </div>
   <div id="grid" style="display:none"></div>
-  <button id="load-more" style="display:none">Chercher +</button>
+  <button id="load-more" style="display:none">Load more</button>
 </main>
 
 <!-- Footer -->
@@ -485,7 +485,7 @@
       <div id="footer-title">—</div>
       <div id="footer-channel"></div>
     </div>
-    <button id="btn-pause" title="Pause / Reprendre (Espace)">⏸</button>
+    <button id="btn-pause" title="Play / Pause (Space)">⏸</button>
     <span style="font-size:16px; color:var(--muted)">🔊</span>
     <input type="range" id="volume" min="0" max="1" step="0.02" value="1">
     <button id="btn-playlist" title="Playlist"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:5px"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg><span id="pl-count">0</span></button>
@@ -505,15 +505,15 @@
   <div class="drawer-header">
     <h2><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:6px"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>Playlist</h2>
     <div style="display:flex;gap:8px;align-items:center">
-      <button id="btn-clear-playlist" title="Vider la playlist" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 10px;cursor:pointer;">Vider</button>
+      <button id="btn-clear-playlist" title="Clear playlist" style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:13px;padding:4px 10px;cursor:pointer;">Clear</button>
       <button id="btn-close-drawer">✕</button>
     </div>
   </div>
-  <div id="playlist-empty">La playlist est vide.<br>Utilise + ou +1 sur une vidéo.</div>
+  <div id="playlist-empty">Playlist is empty.<br>Use + or +1 on a video.</div>
   <div id="playlist-list"></div>
 </div>
 
-<div id="loading-bar">Chargement du flux audio…</div>
+<div id="loading-bar">Loading audio stream…</div>
 
 <audio id="audio-el"></audio>
 
@@ -564,10 +564,10 @@ function fmtTime(s) {
 }
 function fmtViews(n) {
   if (!n) return '';
-  if (n >= 1e9) return (n/1e9).toFixed(1) + 'G vues';
-  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M vues';
-  if (n >= 1e3) return (n/1e3).toFixed(0) + 'k vues';
-  return n + ' vues';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B views';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M views';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'k views';
+  return n + ' views';
 }
 function initials(name) { return (name || '?').charAt(0).toUpperCase(); }
 
@@ -578,7 +578,7 @@ searchForm.addEventListener('submit', async e => {
   if (!q) return;
   currentQuery = q;
   currentN = PAGE_SIZE;
-  stateMsg.innerHTML = '<p style="color:var(--muted)">Recherche en cours…</p>';
+  stateMsg.innerHTML = '<p style="color:var(--muted)">Searching…</p>';
   stateMsg.style.display = 'flex';
   grid.style.display = 'none';
   grid.innerHTML = '';
@@ -593,17 +593,17 @@ async function runSearch() {
     results = data.results || [];
     renderGrid();
   } catch (err) {
-    stateMsg.innerHTML = `<p style="color:#ff6b6b">Erreur : impossible de joindre le serveur.<br><small>${err.message}</small></p>`;
+    stateMsg.innerHTML = '<p style="color:#ff6b6b">Error: could not reach the server.<br><small>' + err.message + '</small></p>';
   }
 }
 
 loadMoreBtn.addEventListener('click', async () => {
   loadMoreBtn.disabled = true;
-  loadMoreBtn.textContent = 'Recherche…';
+  loadMoreBtn.textContent = 'Loading…';
   currentN += PAGE_SIZE;
   await runSearch();
   loadMoreBtn.disabled = false;
-  loadMoreBtn.textContent = 'Chercher +';
+  loadMoreBtn.textContent = 'Load more';
 });
 
 // ── Render search results ──
@@ -629,8 +629,8 @@ function renderGrid() {
           </svg>
         </div>
         <div class="card-actions">
-          <button class="btn-add-next" title="Ajouter en suivant">+1 Suivant</button>
-          <button class="btn-add-end"  title="Ajouter en fin de playlist">+ Fin</button>
+          <button class="btn-add-next" title="Play next">+1 Next</button>
+          <button class="btn-add-end"  title="Add to playlist">+ Queue</button>
         </div>
       </div>
       <div class="card-info">
@@ -699,7 +699,7 @@ function renderPlaylist() {
     var rank = i + 1;
     var rankLabel = i === plCurrentIdx ? '▶' : rank;
     el.innerHTML =
-      '<span class="pl-drag" title="Glisser">⠿</span>' +
+      '<span class="pl-drag" title="Drag to reorder">⠿</span>' +
       '<span class="pl-rank">' + rankLabel + '</span>' +
       '<img class="pl-thumb" src="' + item.thumbnail + '" alt="">' +
       '<div class="pl-meta">' +
@@ -707,9 +707,9 @@ function renderPlaylist() {
         '<div class="pl-channel">' + item.channel + (item.duration ? ' · ' + fmtTime(item.duration) : '') + '</div>' +
       '</div>' +
       '<div class="pl-btns">' +
-        '<button class="pl-btn" data-action="up" title="Monter">↑</button>' +
-        '<button class="pl-btn" data-action="down" title="Descendre">↓</button>' +
-        '<button class="pl-btn pl-del" data-action="del" title="Supprimer">✕</button>' +
+        '<button class="pl-btn" data-action="up" title="Move up">↑</button>' +
+        '<button class="pl-btn" data-action="down" title="Move down">↓</button>' +
+        '<button class="pl-btn pl-del" data-action="del" title="Remove">✕</button>' +
       '</div>';
 
     el.addEventListener('click', function(e) {
@@ -821,7 +821,7 @@ async function startAudio(v) {
     btnPause.textContent = '⏸';
   } catch (err) {
     loadingBar.style.display = 'none';
-    alert('Impossible de charger l\'audio : ' + err.message);
+    alert('Could not load audio: ' + err.message);
   }
 }
 
