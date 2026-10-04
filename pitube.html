@@ -140,6 +140,10 @@
   .spl-track:hover { background: #222; }
   .spl-track-thumb { width: 64px; height: 36px; border-radius: 3px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
   .spl-track-title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spl-track-actions { display: none; gap: 4px; flex-shrink: 0; }
+  .spl-track:hover .spl-track-actions { display: flex; }
+  .spl-track-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 11px; font-weight: 600; padding: 3px 7px; cursor: pointer; white-space: nowrap; }
+  .spl-track-btn:hover { background: var(--red); border-color: var(--red); }
   .spl-track-del { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
   .spl-track-del:hover { color: #c0392b; background: #2a1010; }
 
@@ -165,8 +169,7 @@
   #btn-confirm-save:hover { background: var(--red-dark); }
 
   /* ── Footer ── */
-  #footer { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
-  #footer.visible { display: block; }
+  #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
   .footer-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
   #footer-thumb { width: 48px; height: 27px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
   .footer-meta { flex: 1; min-width: 0; }
@@ -582,9 +585,14 @@ function renderSaved() {
         '</div>' +
         '<ul class="spl-tracks">' +
           tracks.map(function(t, ti) {
-            return '<li class="spl-track">' +
+            return '<li class="spl-track" data-pl="' + name + '" data-idx="' + ti + '">' +
               '<img class="spl-track-thumb" src="' + t.thumbnail + '" alt="">' +
               '<span class="spl-track-title">' + t.title + '</span>' +
+              '<div class="spl-track-actions">' +
+                '<button class="spl-track-btn t-play" title="Play now">&#9654;</button>' +
+                '<button class="spl-track-btn t-next" title="Play next">+1</button>' +
+                '<button class="spl-track-btn t-queue" title="Add to queue">+ Q</button>' +
+              '</div>' +
               '<button class="spl-track-del" data-pl="' + name + '" data-idx="' + ti + '" title="Remove">&#10005;</button>' +
             '</li>';
           }).join('') +
@@ -633,6 +641,37 @@ function renderSaved() {
       updatePlCount();
       renderPlaylist();
       document.querySelector('[data-tab="queue"]').click();
+    });
+
+    // per-track action buttons
+    row.querySelectorAll('.spl-track').forEach(function(li) {
+      var pl  = li.dataset.pl;
+      var idx = parseInt(li.dataset.idx);
+      var t   = savedPlaylists[pl] && savedPlaylists[pl][idx];
+      if (!t) return;
+
+      var btnPlay = li.querySelector('.t-play');
+      var btnNext = li.querySelector('.t-next');
+      var btnQ    = li.querySelector('.t-queue');
+
+      if (btnPlay) btnPlay.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // insert at head of queue and play
+        playlist.splice(0, 0, makeItem(t));
+        if (plCurrentIdx >= 0) plCurrentIdx++;
+        plCurrentIdx = 0;
+        updatePlCount(); renderPlaylist();
+        startAudio(playlist[0]);
+        document.querySelector('[data-tab="queue"]').click();
+      });
+      if (btnNext) btnNext.addEventListener('click', function(e) {
+        e.stopPropagation();
+        addToQueue(t, 'next');
+      });
+      if (btnQ) btnQ.addEventListener('click', function(e) {
+        e.stopPropagation();
+        addToQueue(t, 'end');
+      });
     });
 
     // remove individual track
@@ -756,7 +795,6 @@ function startAudio(v) {
   footerThumb.src = v.thumbnail;
   footerTitle.textContent = v.title;
   footerChan.textContent  = v.channel;
-  footer.classList.remove('visible');
   loadingBar.style.display = 'block';
   audio.pause();
   audio.src = '';
@@ -774,8 +812,7 @@ function startAudio(v) {
     })
     .then(function() {
       loadingBar.style.display = 'none';
-      footer.classList.add('visible');
-      btnPause.textContent = '&#9208;';
+      btnPause.innerHTML = '&#9208;';
     })
     .catch(function(err) {
       loadingBar.style.display = 'none';
