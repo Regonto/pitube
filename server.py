@@ -18,7 +18,7 @@ import struct
 import threading
 import subprocess
 
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, send_from_directory
 from flask_cors import CORS
 import yt_dlp
 
@@ -39,6 +39,10 @@ YDL_AUDIO_OPTS = {
     "skip_download": True,
     "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
 }
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'pitube.html')
 
 # ── Saved playlists ───────────────────────────────────────────────────────────
 def load_playlists():
