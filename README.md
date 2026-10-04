@@ -1,7 +1,7 @@
 # PiTube
 
-Very light Youtube front solution for low-specs Raspberry Pi
-Front HTML statique + backend Flask/yt-dlp. Only audio, no video.
+Lightweight YouTube audio player for Raspberry Pi.
+Static HTML front-end + Flask/yt-dlp backend. No video decoding — audio only.
 
 ## Installation
 
@@ -9,22 +9,27 @@ Front HTML statique + backend Flask/yt-dlp. Only audio, no video.
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-sudo apt install ffmpeg
+sudo apt install ffmpeg mpv
 ```
 
-## Launch
+## Usage
 
+### Normal mode
+Each client plays audio locally in their browser.
 ```bash
 python3 server.py
 ```
 
-Open `pitube.html` in your browser.
-If the front is not running on the same machine than the Pi, edit the line `const API = 'http://localhost:5000'` in `pitube.html`.
-
-## Updates
-
-yt-dlp should be kept up-to-date, else the audio extraction might fail :
-
+### Party mode
+Audio plays on the Pi via mpv. All connected clients share the same queue and state in real time.
 ```bash
-pip install -U yt-dlp
+python3 server.py --party
 ```
+
+Open `http://<pi-ip>:5000` from any device on the network.
+
+## Notes
+
+- Keep yt-dlp up to date or audio extraction will break: `pip install -U yt-dlp`
+- Party mode requires `mpv` installed on the Pi
+- Saved playlists are stored in `playlists.json` next to `server.py`

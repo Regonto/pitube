@@ -168,6 +168,10 @@
   #btn-confirm-save { margin: 10px 14px; padding: 10px; background: var(--red); border: none; border-radius: var(--radius); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
   #btn-confirm-save:hover { background: var(--red-dark); }
 
+  /* ── Party mode badge ── */
+  #party-badge { display:none; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+  #party-badge.on { display:inline-block; }
+
   /* ── Footer ── */
   #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
   .footer-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
@@ -194,12 +198,9 @@
 
 <header>
   <a class="logo" href="#">
-    <svg width="130" height="30" viewBox="0 0 130 30" fill="none">
-      <rect width="36" height="30" rx="6" fill="var(--red)"/>
-      <polygon points="14,7 14,23 28,15" fill="white"/>
-      <text x="44" y="22" font-family="Arial" font-weight="700" font-size="20" fill="#f1f1f1">PiTube</text>
-    </svg>
+    <img id="logo-img" src="assets/pitube.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
+  <span id="party-badge">PARTY</span>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
     <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
     <button type="submit" aria-label="Search">&#128269;</button>
@@ -299,7 +300,8 @@
 </div>
 
 <script>
-var API = 'http://localhost:5000';
+var API = window.location.origin;
+var PARTY = false; // set after /mode check
 
 // ── DOM refs ──
 var searchForm    = document.getElementById('search-form');
@@ -868,8 +870,156 @@ btnPlaylist.addEventListener('click', openDrawer);
 btnCloseDrawer.addEventListener('click', closeDrawer);
 drawerOverlay.addEventListener('click', closeDrawer);
 
-// Init
-loadSavedPlaylists();
+// =============================================================================
+// PARTY MODE
+// =============================================================================
+function initParty() {
+  PARTY = true;
+  document.getElementById('party-badge').classList.add('on');
+
+  // Hide audio element and volume slider (audio lives on server)
+  audio.style.display = 'none';
+  volume.style.display = 'none';
+
+  // SSE connection
+  var es = new EventSource(API + '/stream');
+  es.onmessage = function(e) {
+    var state = JSON.parse(e.data);
+    applyPartyState(state);
+  };
+  es.onerror = function() {
+    // reconnects automatically
+  };
+
+  // Rewire card actions to send commands
+  // (renderGrid already uses playFromSearch / addToQueue — we override those below)
+}
+
+function sendCmd(obj) {
+  fetch(API + '/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(obj)
+  }).catch(function() {});
+}
+
+function applyPartyState(state) {
+  // Update shared queue/idx
+  playlist     = state.queue || [];
+  plCurrentIdx = state.current_idx;
+
+  // Footer
+  if (playlist.length > 0 && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) {
+    var t = playlist[plCurrentIdx];
+    footerThumb.src           = t.thumbnail || '';
+    footerTitle.textContent   = t.title || '';
+    footerChan.textContent    = t.channel || '';
+  }
+
+  // Pause button
+  btnPause.innerHTML = state.is_playing ? '&#9208;' : '&#9654;';
+
+  // Progress bar
+  if (state.duration > 0) {
+    progress.value          = (state.position / state.duration) * 100;
+    timeCur.textContent     = fmtTime(state.position);
+    timeDur.textContent     = fmtTime(state.duration);
+  }
+
+  updatePlCount();
+  renderPlaylist();
+  loadingBar.style.display = 'none';
+}
+
+// Override playback functions in party mode
+var _playFromSearch   = playFromSearch;
+var _addToQueue       = addToQueue;
+var _playFromPlaylist = playFromPlaylist;
+
+function partyPlayFromSearch(idx) {
+  var v = results[idx];
+  document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('playing'); });
+  var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
+  if (activeCard) activeCard.classList.add('playing');
+  loadingBar.style.display = 'block';
+  sendCmd({ cmd: 'play', track: makeItem(v) });
+}
+
+function partyAddToQueue(v, where) {
+  sendCmd({ cmd: where === 'next' ? 'add_next' : 'add_end', track: makeItem(v) });
+  btnPlaylist.style.background = 'var(--red)';
+  setTimeout(function() { btnPlaylist.style.background = ''; }, 300);
+}
+
+function partyPlayFromPlaylist(idx) {
+  sendCmd({ cmd: 'play_idx', idx: idx });
+}
+
+function partyTogglePause() {
+  sendCmd({ cmd: 'pause_toggle' });
+}
+
+// Rewire controls when in party mode
+function activatePartyControls() {
+  playFromSearch   = partyPlayFromSearch;
+  addToQueue       = partyAddToQueue;
+  playFromPlaylist = partyPlayFromPlaylist;
+
+  // Pause button
+  btnPause.onclick = partyTogglePause;
+
+  // Progress seek
+  progress.addEventListener('change', function() {
+    var state = { duration: parseFloat(timeDur.textContent.replace(':', '.')) };
+    // compute from current timeDur text
+    var parts = timeDur.textContent.split(':');
+    var dur = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    if (dur > 0) sendCmd({ cmd: 'seek', position: (progress.value / 100) * dur });
+  });
+
+  // Queue reorder / delete: rewire renderPlaylist buttons
+  // (the existing renderPlaylist already calls plMove/plDelete — we override those)
+  plMove   = function(from, to) { sendCmd({ cmd: 'reorder', from: from, to: to }); };
+  plDelete = function(i)        { sendCmd({ cmd: 'remove', idx: i }); };
+
+  // Clear queue
+  document.getElementById('btn-clear-playlist').onclick = function() {
+    sendCmd({ cmd: 'clear' });
+  };
+
+  // Spacebar
+  document.addEventListener('keydown', function(e) {
+    if (e.code !== 'Space') return;
+    var tag = document.activeElement.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    partyTogglePause();
+  });
+
+  // Save-to-playlist from footer: use current track from server state
+  btnSaveFooter.onclick = function() {
+    if (plCurrentIdx >= 0 && plCurrentIdx < playlist.length)
+      openSavePicker(playlist[plCurrentIdx]);
+  };
+}
+
+// =============================================================================
+// INIT — detect mode then boot
+// =============================================================================
+fetch(API + '/mode')
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    loadSavedPlaylists();
+    if (data.party) {
+      document.getElementById('logo-img').src = 'assets/pitube_party.png';
+      initParty();
+      activatePartyControls();
+    }
+  })
+  .catch(function() {
+    // server unreachable — normal mode fallback
+    loadSavedPlaylists();
+  });
 </script>
 </body>
 </html>
