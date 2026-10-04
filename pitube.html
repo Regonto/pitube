@@ -159,13 +159,13 @@
   .picker-new input:focus { border-color: var(--red); }
   .picker-new button { background: var(--red); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 600; padding: 7px 14px; cursor: pointer; }
   .picker-new button:hover { background: var(--red-dark); }
-  #picker-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  #picker-list { flex: 1; overflow-y: auto; padding: 8px 0; min-height: 0; }
   .picker-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-radius: 6px; margin: 2px 8px; }
   .picker-item:hover { background: var(--surface2); }
   .picker-item input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--red); flex-shrink: 0; cursor: pointer; }
   .picker-item-name { font-size: 15px; font-weight: 500; flex: 1; }
   .picker-item-count { font-size: 13px; color: var(--muted); }
-  #btn-confirm-save { margin: 10px 14px; padding: 10px; background: var(--red); border: none; border-radius: var(--radius); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #btn-confirm-save { flex-shrink: 0; margin: 10px 14px; padding: 14px; background: var(--red); border: none; border-radius: var(--radius); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
   #btn-confirm-save:hover { background: var(--red-dark); }
 
   /* ── Party mode badge ── */
@@ -198,7 +198,7 @@
 
 <header>
   <a class="logo" href="#">
-    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" src="assets/pitube.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
   <span id="party-badge">PARTY</span>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
@@ -762,10 +762,7 @@ btnConfirmSave.addEventListener('click', function() {
   closeSavePicker();
 });
 
-btnSaveFooter.addEventListener('click', function() {
-  if (plCurrentIdx < 0 || plCurrentIdx >= playlist.length) return;
-  openSavePicker(playlist[plCurrentIdx]);
-});
+// btnSaveFooter is wired once after mode detection (see init section)
 
 // ── Audio playback ──
 function playFromSearch(idx) {
@@ -987,28 +984,28 @@ function activatePartyControls() {
     sendCmd({ cmd: 'clear' });
   });
 
-  // Save-to-playlist from footer
-  btnSaveFooter.addEventListener('click', function() {
-    if (plCurrentIdx >= 0 && plCurrentIdx < playlist.length)
-      openSavePicker(playlist[plCurrentIdx]);
-  });
 }
 
 // =============================================================================
 // INIT — detect mode then boot
 // =============================================================================
+// Save footer button — works in both modes
+btnSaveFooter.addEventListener('click', function() {
+  if (plCurrentIdx >= 0 && plCurrentIdx < playlist.length)
+    openSavePicker(playlist[plCurrentIdx]);
+});
+
 fetch(API + '/mode')
   .then(function(r) { return r.json(); })
   .then(function(data) {
     loadSavedPlaylists();
     if (data.party) {
-      document.getElementById('logo-img').src = 'assets/logo_party.png';
+      document.getElementById('logo-img').src = 'assets/pitube_party.png';
       initParty();
       activatePartyControls();
     }
   })
   .catch(function() {
-    // server unreachable — normal mode fallback
     loadSavedPlaylists();
   });
 </script>
