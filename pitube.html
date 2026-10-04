@@ -198,7 +198,7 @@
 
 <header>
   <a class="logo" href="#">
-    <img id="logo-img" src="assets/pitube.png" alt="PiTube" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
   <span id="party-badge">PARTY</span>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
@@ -1002,7 +1002,7 @@ fetch(API + '/mode')
   .then(function(data) {
     loadSavedPlaylists();
     if (data.party) {
-      document.getElementById('logo-img').src = 'assets/pitube_party.png';
+      document.getElementById('logo-img').src = 'assets/logo_party.png';
       initParty();
       activatePartyControls();
     }
