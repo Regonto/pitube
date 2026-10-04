@@ -895,15 +895,32 @@ function initParty() {
   // (renderGrid already uses playFromSearch / addToQueue — we override those below)
 }
 
+var _cmdPending = false;
+var _cmdTimer   = null;
+
 function sendCmd(obj) {
+  // Block SSE state application briefly so our command isn't overridden
+  _cmdPending = true;
+  clearTimeout(_cmdTimer);
+  _cmdTimer = setTimeout(function() { _cmdPending = false; }, 1500);
+
   fetch(API + '/command', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(obj)
-  }).catch(function() {});
+  }).then(function() {
+    // Once server confirms, re-fetch state and unblock
+    setTimeout(function() {
+      fetch(API + '/party-state')
+        .then(function(r) { return r.json(); })
+        .then(function(s) { _cmdPending = false; applyPartyState(s); })
+        .catch(function() { _cmdPending = false; });
+    }, 300);
+  }).catch(function() { _cmdPending = false; });
 }
 
 function applyPartyState(state) {
+  if (_cmdPending) return; // ignore SSE updates while a command is in flight
   // Update shared queue/idx
   playlist     = state.queue || [];
   plCurrentIdx = state.current_idx;
