@@ -61,7 +61,7 @@
   .card-actions button:hover { background: var(--red); border-color: var(--red); }
 
   /* ── Drawer ── */
-  #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 300; }
+  #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 180; }
   #drawer-overlay.open { display: block; }
   #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; background: #181818; border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: 100px; }
   #drawer.open { right: 0; }
@@ -299,7 +299,7 @@
 </div>
 
 <script>
-var API = window.location.origin;
+var API = 'http://localhost:5000';
 
 // ── DOM refs ──
 var searchForm    = document.getElementById('search-form');
