@@ -40,10 +40,6 @@ YDL_AUDIO_OPTS = {
     "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
 }
 
-@app.route('/')
-def index():
-    return send_from_directory('.', 'pitube.html')
-
 # ── Saved playlists ───────────────────────────────────────────────────────────
 def load_playlists():
     if not os.path.exists(PLAYLISTS_FILE):
@@ -115,6 +111,17 @@ def save_playlists_route():
         return jsonify({"error": "Invalid data"}), 400
     save_playlists(data)
     return jsonify({"ok": True})
+
+# ── Serve front-end ───────────────────────────────────────────────────────────
+BASE_DIR = os.path.dirname(__file__)
+
+@app.route("/")
+def index():
+    return send_from_directory(BASE_DIR, "pitube.html")
+
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory(os.path.join(BASE_DIR, "assets"), filename)
 
 # ── Mode endpoint (so the front knows which mode is active) ───────────────────
 @app.route("/mode")

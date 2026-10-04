@@ -198,7 +198,7 @@
 
 <header>
   <a class="logo" href="#">
-    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" src="assets/pitube.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
   <span id="party-badge">PARTY</span>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
@@ -836,21 +836,24 @@ audio.addEventListener('error', function() {
 });
 audio.addEventListener('playing', function() { audioRetried = false; });
 
-// ── Controls ──
+// ── Controls (normal mode) ──
 function togglePause() {
   if (!audio.src) return;
   if (audio.paused) { audio.play(); btnPause.innerHTML = '&#9208;'; }
   else              { audio.pause(); btnPause.innerHTML = '&#9654;'; }
 }
-btnPause.addEventListener('click', togglePause);
+var _pauseHandler = togglePause;
+btnPause.addEventListener('click', function() { _pauseHandler(); });
 
 audio.addEventListener('timeupdate', function() {
+  if (PARTY) return; // party mode: progress updated via SSE
   if (!audio.duration) return;
   progress.value = (audio.currentTime / audio.duration) * 100;
   timeCur.textContent = fmtTime(audio.currentTime);
   timeDur.textContent = fmtTime(audio.duration);
 });
 progress.addEventListener('input', function() {
+  if (PARTY) return; // handled separately in party mode
   if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
 });
 volume.addEventListener('input', function() { audio.volume = volume.value; });
@@ -860,7 +863,7 @@ document.addEventListener('keydown', function(e) {
   var tag = document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;
   e.preventDefault();
-  togglePause();
+  _pauseHandler();
 });
 
 // ── Drawer ──
@@ -965,42 +968,30 @@ function activatePartyControls() {
   addToQueue       = partyAddToQueue;
   playFromPlaylist = partyPlayFromPlaylist;
 
-  // Pause button
-  btnPause.onclick = partyTogglePause;
+  // Swap pause handler (listener stays, just target changes)
+  _pauseHandler = partyTogglePause;
 
   // Progress seek
   progress.addEventListener('change', function() {
-    var state = { duration: parseFloat(timeDur.textContent.replace(':', '.')) };
-    // compute from current timeDur text
     var parts = timeDur.textContent.split(':');
-    var dur = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+    var dur = parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
     if (dur > 0) sendCmd({ cmd: 'seek', position: (progress.value / 100) * dur });
   });
 
-  // Queue reorder / delete: rewire renderPlaylist buttons
-  // (the existing renderPlaylist already calls plMove/plDelete — we override those)
+  // Queue reorder / delete
   plMove   = function(from, to) { sendCmd({ cmd: 'reorder', from: from, to: to }); };
   plDelete = function(i)        { sendCmd({ cmd: 'remove', idx: i }); };
 
   // Clear queue
-  document.getElementById('btn-clear-playlist').onclick = function() {
+  document.getElementById('btn-clear-playlist').addEventListener('click', function() {
     sendCmd({ cmd: 'clear' });
-  };
-
-  // Spacebar
-  document.addEventListener('keydown', function(e) {
-    if (e.code !== 'Space') return;
-    var tag = document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    e.preventDefault();
-    partyTogglePause();
   });
 
-  // Save-to-playlist from footer: use current track from server state
-  btnSaveFooter.onclick = function() {
+  // Save-to-playlist from footer
+  btnSaveFooter.addEventListener('click', function() {
     if (plCurrentIdx >= 0 && plCurrentIdx < playlist.length)
       openSavePicker(playlist[plCurrentIdx]);
-  };
+  });
 }
 
 // =============================================================================
@@ -1011,7 +1002,7 @@ fetch(API + '/mode')
   .then(function(data) {
     loadSavedPlaylists();
     if (data.party) {
-      document.getElementById('logo-img').src = 'assets/logo_party.png';
+      document.getElementById('logo-img').src = 'assets/pitube_party.png';
       initParty();
       activatePartyControls();
     }
