@@ -30,7 +30,8 @@
   .search-bar button:hover { background: #3d3d3d; }
 
   /* ── List ── */
-  main { padding: 1rem 1rem 100px; }
+  main { padding: 1rem 1rem 100px; display: flex; align-items: flex-start; gap: 20px; }
+  #results-col { flex: 1; min-width: 0; }
   #state-msg { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 12px; color: var(--muted); text-align: center; }
   #state-msg svg { opacity: .35; }
   #state-msg p { font-size: 16px; }
@@ -63,7 +64,7 @@
   /* ── Drawer ── */
   #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 180; }
   #drawer-overlay.open { display: block; }
-  #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; background: #181818; border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: 100px; }
+  #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; height: 100dvh; background: #181818; border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: var(--footer-h, 110px); }
   #drawer.open { right: 0; }
 
   /* Drawer header */
@@ -148,7 +149,7 @@
   .spl-track-del:hover { color: #c0392b; background: #2a1010; }
 
   /* ── Save-to-playlist picker (modal inside drawer) ── */
-  #save-picker { display: none; position: absolute; inset: 0; background: #181818; z-index: 10; flex-direction: column; }
+  #save-picker { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: #181818; z-index: 10; flex-direction: column; }
   #save-picker.open { display: flex; }
   .picker-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .picker-header h3 { flex: 1; font-size: 17px; font-weight: 600; }
@@ -168,6 +169,31 @@
   #btn-confirm-save { flex-shrink: 0; margin: 10px 14px; padding: 14px; background: var(--red); border: none; border-radius: var(--radius); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
   #btn-confirm-save:hover { background: var(--red-dark); }
 
+  /* ── QR code panel (left of the results, never over them) ── */
+  #logo-img { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  #qr-panel { display: none; }
+  #qr-panel.show { display: block; flex: 0 0 200px; width: 200px; position: sticky; top: 72px; align-self: flex-start; }
+  .qr-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+  .qr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #qr-label { font-size: 14px; font-weight: 600; }
+  #qr-close { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #qr-close:hover { background: var(--border); color: var(--text); }
+  #qr-img { display: block; width: 100%; aspect-ratio: 1; background: #fff; border-radius: 8px; padding: 4px; }
+  #qr-url { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; word-break: break-all; }
+  #qr-err { display: none; font-size: 12px; color: var(--muted); }
+  /* Narrow screens: no room next to the results -> centered pop-up (tap outside to close) */
+  @media (max-width: 899px) {
+    #qr-panel.show { position: fixed; inset: 0; width: auto; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); z-index: 600; }
+    #qr-panel .qr-card { width: min(300px, 80vw); }
+  }
+
+  /* ── Touch / long-press helpers ── */
+  .card, .pl-item, .spl-track { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .spl-track-more { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; line-height: 1; }
+  .spl-track-more:hover { color: var(--text); background: var(--surface2); }
+  @media (hover: none) { .spl-track:hover .spl-track-actions { display: none; } }
+  .ctx-btn.danger { color: #ff6b6b; }
+
   /* ── Party mode badge ── */
   #party-badge { display:none; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
   #party-badge.on { display:inline-block; }
@@ -183,7 +209,16 @@
   #btn-pause:hover { background: #3d3d3d; }
   #btn-save-footer { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 13px; font-weight: 600; padding: 0 12px; height: 40px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
   #btn-save-footer:hover { background: var(--red); border-color: var(--red); }
-  #volume { -webkit-appearance: none; appearance: none; width: 70px; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer; accent-color: var(--text); flex-shrink: 0; }
+  /* Volume : bouton haut-parleur + popover avec curseur */
+  #vol-wrap { position: relative; flex-shrink: 0; }
+  #btn-vol { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  #btn-vol:hover { background: #3d3d3d; }
+  #vol-pop { display: none; position: absolute; bottom: calc(100% + 12px); right: -8px; max-width: calc(100vw - 16px); background: #1e1e1e; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; z-index: 300; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  #vol-pop.open { display: flex; }
+  #volume { -webkit-appearance: none; appearance: none; width: 170px; height: 6px; background: var(--border); border-radius: 3px; cursor: pointer; outline: none; }
+  #volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none; }
+  #volume::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none; }
+  #vol-pct { font-size: 14px; color: var(--muted); min-width: 40px; text-align: right; }
   #btn-playlist { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 22px; font-weight: 600; padding: 0 20px; height: 64px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
   #btn-playlist svg { width: 32px; height: 32px; }
   #btn-playlist:hover { background: #3d3d3d; }
@@ -219,7 +254,7 @@
     #footer-channel { font-size: 11px; }
     #btn-pause { width: 40px; height: 40px; font-size: 18px; }
     #btn-save-footer { font-size: 12px; padding: 0 8px; height: 34px; }
-    #volume { width: 50px; }
+    #btn-vol { width: 40px; height: 40px; font-size: 18px; }
     #btn-playlist { font-size: 16px; padding: 0 10px; height: 44px; }
     #btn-playlist svg { width: 20px; height: 20px; }
     .footer-progress { gap: 4px; }
@@ -304,7 +339,7 @@
 
 <header>
   <a class="logo" href="#">
-    <img id="logo-img" src="assets/pitube.png" alt="PiTube" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
   <span id="party-badge">PARTY</span>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
@@ -314,6 +349,18 @@
 </header>
 
 <main>
+  <aside id="qr-panel">
+    <div class="qr-card">
+      <div class="qr-head">
+        <span id="qr-label">Scan to join</span>
+        <button id="qr-close" title="Hide">&#10005;</button>
+      </div>
+      <img id="qr-img" alt="QR code" draggable="false">
+      <div id="qr-err">QR unavailable: run <b>pip install segno</b> then restart the server.</div>
+      <div id="qr-url"></div>
+    </div>
+  </aside>
+  <div id="results-col">
   <div id="state-msg">
     <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
       <rect width="80" height="80" rx="12" fill="#272727"/>
@@ -323,6 +370,7 @@
   </div>
   <div id="grid" style="display:none"></div>
   <button id="load-more" style="display:none">Load more</button>
+  </div>
 </main>
 
 <!-- Footer -->
@@ -335,8 +383,13 @@
     </div>
     <button id="btn-save-footer" title="Save to playlist">+ Save</button>
     <button id="btn-pause" title="Play / Pause (Space)">&#9208;</button>
-    <span style="font-size:16px;color:var(--muted)">&#128266;</span>
-    <input type="range" id="volume" min="0" max="1" step="0.02" value="1">
+    <div id="vol-wrap">
+      <button id="btn-vol" title="Volume">&#128266;</button>
+      <div id="vol-pop">
+        <input type="range" id="volume" min="0" max="1" step="0.02" value="1">
+        <span id="vol-pct">100%</span>
+      </div>
+    </div>
     <button id="btn-playlist" title="Queue &amp; Playlists">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>
       <span id="pl-count">0</span>
@@ -401,7 +454,7 @@
       <button id="btn-picker-create">Create</button>
     </div>
     <div id="picker-list"></div>
-    <button id="btn-confirm-save">Save</button>
+    <button id="btn-confirm-save">Done</button>
   </div>
 </div>
 
@@ -412,18 +465,7 @@
       <img id="ctx-thumb" src="" alt="">
       <div id="ctx-title"></div>
     </div>
-    <button class="ctx-btn" id="ctx-play">
-      <span class="ctx-btn-icon">&#9654;</span> Play now
-    </button>
-    <button class="ctx-btn" id="ctx-next">
-      <span class="ctx-btn-icon">+1</span> Play next
-    </button>
-    <button class="ctx-btn" id="ctx-queue">
-      <span class="ctx-btn-icon">+</span> Add to queue
-    </button>
-    <button class="ctx-btn" id="ctx-save">
-      <span class="ctx-btn-icon">&#9733;</span> Save to playlist
-    </button>
+    <div id="ctx-actions"></div>
     <button id="ctx-cancel">Cancel</button>
   </div>
 </div>
@@ -448,6 +490,14 @@ var footerThumb   = document.getElementById('footer-thumb');
 var footerTitle   = document.getElementById('footer-title');
 var footerChan    = document.getElementById('footer-channel');
 var volume        = document.getElementById('volume');
+
+// Keep --footer-h in sync so the drawer / save picker never end up under the footer
+function syncFooterH() {
+  document.documentElement.style.setProperty('--footer-h', document.getElementById('footer').offsetHeight + 'px');
+}
+syncFooterH();
+if (window.ResizeObserver) new ResizeObserver(syncFooterH).observe(document.getElementById('footer'));
+window.addEventListener('resize', syncFooterH);
 var loadMoreBtn   = document.getElementById('load-more');
 var btnPlaylist   = document.getElementById('btn-playlist');
 var plCount       = document.getElementById('pl-count');
@@ -597,13 +647,13 @@ function renderGrid() {
 
     card.addEventListener('click', function(e) {
       if (e.target.closest('.card-actions')) return;
-      if (_lpFired) { _lpFired = false; return; } // long press already handled
+      if (lpRecent()) return; // long press / right click already handled
       playFromSearch(i);
     });
     card.querySelector('.btn-add-next').addEventListener('click', function(e) { e.stopPropagation(); addToQueue(v, 'next'); });
     card.querySelector('.btn-add-end').addEventListener('click', function(e) { e.stopPropagation(); addToQueue(v, 'end'); });
     card.querySelector('.btn-save-card').addEventListener('click', function(e) { e.stopPropagation(); openSavePicker(makeItem(v)); });
-    attachLongPress(card, v, i);
+    attachLongPress(card, function() { return cardMenu(v, i); });
     grid.appendChild(card);
   });
 }
@@ -632,7 +682,7 @@ function renderPlaylist() {
     var el = document.createElement('div');
     el.className = 'pl-item' + (i === plCurrentIdx ? ' pl-active' : '');
     el.dataset.idx = i;
-    el.draggable = true;
+    el.draggable = window.matchMedia ? window.matchMedia('(pointer: fine)').matches : true; // touch: no native drag (it hijacks long-press)
     var rankLabel = i === plCurrentIdx ? '&#9654;' : (i + 1);
     el.innerHTML =
       '<span class="pl-drag" title="Drag to reorder">&#10783;</span>' +
@@ -650,8 +700,10 @@ function renderPlaylist() {
 
     el.addEventListener('click', function(e) {
       if (e.target.closest('.pl-btns') || e.target.closest('.pl-drag')) return;
+      if (lpRecent()) return;
       playFromPlaylist(i);
     });
+    attachLongPress(el, function() { return queueMenu(item, i); });
     el.querySelectorAll('.pl-btn').forEach(function(btn) {
       btn.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -726,6 +778,7 @@ function renderSaved() {
                 '<button class="spl-track-btn t-next" title="Play next">+1</button>' +
                 '<button class="spl-track-btn t-queue" title="Add to queue">+ Q</button>' +
               '</div>' +
+              '<button class="spl-track-more" title="More actions">&#8943;</button>' +
               '<button class="spl-track-del" data-pl="' + name + '" data-idx="' + ti + '" title="Remove">&#10005;</button>' +
             '</li>';
           }).join('') +
@@ -755,11 +808,15 @@ function renderSaved() {
       e.stopPropagation();
       var tracks = savedPlaylists[name];
       if (!tracks || tracks.length === 0) return;
-      playlist = tracks.map(function(t) { return makeItem(t); });
-      plCurrentIdx = 0;
-      updatePlCount();
-      renderPlaylist();
-      playFromPlaylist(0);
+      if (PARTY) {
+        sendCmd({ cmd: 'play_list', tracks: tracks.map(function(t) { return makeItem(t); }) });
+      } else {
+        playlist = tracks.map(function(t) { return makeItem(t); });
+        plCurrentIdx = 0;
+        updatePlCount();
+        renderPlaylist();
+        playFromPlaylist(0);
+      }
       // switch to queue tab
       document.querySelector('[data-tab="queue"]').click();
     });
@@ -770,9 +827,13 @@ function renderSaved() {
       e.stopPropagation();
       var tracks = savedPlaylists[name];
       if (!tracks) return;
-      tracks.forEach(function(t) { playlist.push(makeItem(t)); });
-      updatePlCount();
-      renderPlaylist();
+      if (PARTY) {
+        sendCmd({ cmd: 'add_many', tracks: tracks.map(function(t) { return makeItem(t); }) });
+      } else {
+        tracks.forEach(function(t) { playlist.push(makeItem(t)); });
+        updatePlCount();
+        renderPlaylist();
+      }
       document.querySelector('[data-tab="queue"]').click();
     });
 
@@ -786,16 +847,16 @@ function renderSaved() {
       var btnPlay = li.querySelector('.t-play');
       var btnNext = li.querySelector('.t-next');
       var btnQ    = li.querySelector('.t-queue');
+      var btnMore = li.querySelector('.spl-track-more');
+      if (btnMore) btnMore.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openCtxMenu(t, savedTrackMenu(pl, idx).actions);
+      });
+      attachLongPress(li, function() { return savedTrackMenu(pl, idx); });
 
       if (btnPlay) btnPlay.addEventListener('click', function(e) {
         e.stopPropagation();
-        // insert at head of queue and play
-        playlist.splice(0, 0, makeItem(t));
-        if (plCurrentIdx >= 0) plCurrentIdx++;
-        plCurrentIdx = 0;
-        updatePlCount(); renderPlaylist();
-        startAudio(playlist[0]);
-        document.querySelector('[data-tab="queue"]').click();
+        playTrackNow(t);
       });
       if (btnNext) btnNext.addEventListener('click', function(e) {
         e.stopPropagation();
@@ -821,6 +882,19 @@ function renderSaved() {
 
     savedList.appendChild(row);
   });
+}
+
+// Play one track right now (both modes)
+function playTrackNow(t) {
+  if (PARTY) {
+    sendCmd({ cmd: 'play', track: makeItem(t) });
+  } else {
+    playlist.splice(0, 0, makeItem(t));
+    plCurrentIdx = 0;
+    updatePlCount(); renderPlaylist();
+    startAudio(playlist[0]);
+  }
+  document.querySelector('[data-tab="queue"]').click();
 }
 
 // Create new saved playlist
@@ -856,11 +930,31 @@ function renderPickerList() {
   names.forEach(function(name) {
     var row = document.createElement('div');
     row.className = 'picker-item';
-    var checked = savedPlaylists[name].some(function(t) { return t.id === pickerItem.id; });
-    row.innerHTML =
-      '<input type="checkbox" id="pick-' + name + '" ' + (checked ? 'checked' : '') + '>' +
-      '<label for="pick-' + name + '" class="picker-item-name">' + name + '</label>' +
-      '<span class="picker-item-count">' + savedPlaylists[name].length + '</span>';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = savedPlaylists[name].some(function(t) { return t.id === pickerItem.id; });
+    var label = document.createElement('span');
+    label.className = 'picker-item-name';
+    label.textContent = name;
+    var count = document.createElement('span');
+    count.className = 'picker-item-count';
+    count.textContent = savedPlaylists[name].length;
+    row.appendChild(cb); row.appendChild(label); row.appendChild(count);
+
+    // Tapping anywhere on the row adds / removes the track immediately (no hidden confirm button needed)
+    row.addEventListener('click', function(e) {
+      if (e.target !== cb) cb.checked = !cb.checked;
+      var list = savedPlaylists[name];
+      var inList = list.some(function(t) { return t.id === pickerItem.id; });
+      if (cb.checked && !inList) {
+        list.push(pickerItem);
+      } else if (!cb.checked && inList) {
+        savedPlaylists[name] = list.filter(function(t) { return t.id !== pickerItem.id; });
+      }
+      count.textContent = savedPlaylists[name].length;
+      persistSaved();
+      renderSaved();
+    });
     pickerList.appendChild(row);
   });
 }
@@ -878,20 +972,7 @@ btnPickerCreate.addEventListener('click', function() {
 });
 pickerNewInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') btnPickerCreate.click(); });
 
-btnConfirmSave.addEventListener('click', function() {
-  if (!pickerItem) return;
-  pickerList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
-    var name = cb.id.replace('pick-', '');
-    var inList = savedPlaylists[name].some(function(t) { return t.id === pickerItem.id; });
-    if (cb.checked && !inList) {
-      savedPlaylists[name].push(pickerItem);
-    } else if (!cb.checked && inList) {
-      savedPlaylists[name] = savedPlaylists[name].filter(function(t) { return t.id !== pickerItem.id; });
-    }
-  });
-  persistSaved();
-  closeSavePicker();
-});
+btnConfirmSave.addEventListener('click', closeSavePicker);
 
 // btnSaveFooter is wired once after mode detection (see init section)
 
@@ -963,49 +1044,48 @@ audio.addEventListener('error', function() {
 });
 audio.addEventListener('playing', function() { audioRetried = false; });
 
-// ── Long-press context menu ──
+// ── Long-press / right-click context menu ──
 var ctxOverlay = document.getElementById('ctx-overlay');
-var ctxMenu    = document.getElementById('ctx-menu');
 var ctxThumb   = document.getElementById('ctx-thumb');
 var ctxTitle   = document.getElementById('ctx-title');
-var _ctxItem   = null;
-var _lpTimer   = null;
-var _lpFired   = false;
+var ctxActions = document.getElementById('ctx-actions');
+var _lpAt      = 0;   // timestamp of the last long-press / right-click (used to swallow the click that follows)
+var _ctxOpenedAt = 0;
 
-function openCtxMenu(v) {
-  _ctxItem = v;
-  ctxThumb.src       = v.thumbnail;
-  ctxTitle.textContent = v.title;
+function lpRecent() { return Date.now() - _lpAt < 700; }
+
+// actions: [{ icon, label, run, danger }]
+function openCtxMenu(item, actions) {
+  ctxThumb.src = item.thumbnail || '';
+  ctxTitle.textContent = item.title || '';
+  ctxActions.innerHTML = '';
+  actions.forEach(function(a) {
+    var b = document.createElement('button');
+    b.className = 'ctx-btn' + (a.danger ? ' danger' : '');
+    var ic = document.createElement('span');
+    ic.className = 'ctx-btn-icon';
+    ic.textContent = a.icon;
+    b.appendChild(ic);
+    b.appendChild(document.createTextNode(' ' + a.label));
+    b.addEventListener('click', function() {
+      if (Date.now() - _ctxOpenedAt < 350) return; // finger release right after the long-press
+      closeCtxMenu();
+      a.run();
+    });
+    ctxActions.appendChild(b);
+  });
+  _ctxOpenedAt = Date.now();
   ctxOverlay.classList.add('open');
 }
 function closeCtxMenu() {
   ctxOverlay.classList.remove('open');
-  _ctxItem = null;
 }
 
 // Close on backdrop tap
 ctxOverlay.addEventListener('click', function(e) {
-  if (e.target === ctxOverlay) closeCtxMenu();
+  if (e.target === ctxOverlay && Date.now() - _ctxOpenedAt > 350) closeCtxMenu();
 });
 document.getElementById('ctx-cancel').addEventListener('click', closeCtxMenu);
-
-// Context menu actions
-document.getElementById('ctx-play').addEventListener('click', function() {
-  if (_ctxItem) playFromSearch(_ctxItem._idx);
-  closeCtxMenu();
-});
-document.getElementById('ctx-next').addEventListener('click', function() {
-  if (_ctxItem) addToQueue(_ctxItem, 'next');
-  closeCtxMenu();
-});
-document.getElementById('ctx-queue').addEventListener('click', function() {
-  if (_ctxItem) addToQueue(_ctxItem, 'end');
-  closeCtxMenu();
-});
-document.getElementById('ctx-save').addEventListener('click', function() {
-  if (_ctxItem) openSavePicker(makeItem(_ctxItem));
-  closeCtxMenu();
-});
 
 // Android back button closes menu
 window.addEventListener('popstate', function() {
@@ -1014,31 +1094,92 @@ window.addEventListener('popstate', function() {
   }
 });
 
-function attachLongPress(card, v, idx) {
-  v._idx = idx;
+// Menus per context
+function cardMenu(v, idx) {
+  return { item: v, actions: [
+    { icon: '\u25B6', label: 'Play now',         run: function() { playFromSearch(idx); } },
+    { icon: '+1',      label: 'Play next',        run: function() { addToQueue(v, 'next'); } },
+    { icon: '+',       label: 'Add to queue',     run: function() { addToQueue(v, 'end'); } },
+    { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(v)); } }
+  ]};
+}
 
-  function onStart(e) {
-    _lpFired = false;
-    _lpTimer = setTimeout(function() {
-      _lpFired = true;
-      // light haptic if available
-      if (navigator.vibrate) navigator.vibrate(40);
-      openCtxMenu(v);
-    }, 500);
-  }
-  function onEnd(e) {
-    clearTimeout(_lpTimer);
-  }
-  function onMove(e) {
-    clearTimeout(_lpTimer); // moved finger = cancel
-  }
+function queuePlayNext(i) {
+  var c = plCurrentIdx;
+  if (i === c) return;
+  var to = c < 0 ? 0 : (i > c ? c + 1 : c);
+  if (to !== i) plMove(i, to);
+}
+function queueMenu(item, i) {
+  return { item: item, actions: [
+    { icon: '\u25B6', label: 'Play now',         run: function() { playFromPlaylist(i); } },
+    { icon: '+1',      label: 'Play next',        run: function() { queuePlayNext(i); } },
+    { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(item)); } },
+    { icon: '\u2715', label: 'Remove from queue', danger: true, run: function() { plDelete(i); } }
+  ]};
+}
 
-  card.addEventListener('touchstart', onStart, { passive: true });
-  card.addEventListener('touchend',   onEnd);
-  card.addEventListener('touchmove',  onMove, { passive: true });
-  card.addEventListener('contextmenu', function(e) {
+function savedTrackMenu(pl, ti) {
+  var t = savedPlaylists[pl] && savedPlaylists[pl][ti];
+  if (!t) return null;
+  return { item: t, actions: [
+    { icon: '\u25B6', label: 'Play now',     run: function() { playTrackNow(t); } },
+    { icon: '+1',      label: 'Play next',    run: function() { addToQueue(t, 'next'); } },
+    { icon: '+',       label: 'Add to queue', run: function() { addToQueue(t, 'end'); } },
+    { icon: '\u2605', label: 'Save to another playlist', run: function() { openSavePicker(makeItem(t)); } },
+    { icon: '\u2715', label: 'Remove from this playlist', danger: true, run: function() {
+        savedPlaylists[pl].splice(ti, 1);
+        persistSaved();
+        renderSaved();
+    } }
+  ]};
+}
+
+// Low-level long-press: touch hold (500 ms) + right-click, optionally mouse hold too.
+// fn() is called once per gesture (Android fires both a timer and a contextmenu event: de-duplicated).
+function onLongPress(el, fn, opts) {
+  var timer = null, sx = 0, sy = 0, last = 0;
+  function cancel() { if (timer) { clearTimeout(timer); timer = null; } }
+  function trigger() {
+    var n = Date.now();
+    if (n - last < 800) return;
+    last = n; _lpAt = n;
+    fn();
+  }
+  function fire() {
+    timer = null;
+    if (navigator.vibrate) { try { navigator.vibrate(40); } catch (err) {} }
+    trigger();
+  }
+  el.addEventListener('touchstart', function(e) {
+    cancel();
+    if (e.touches.length !== 1) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    timer = setTimeout(fire, 500);
+  }, { passive: true });
+  el.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel(); // scrolling
+  }, { passive: true });
+  el.addEventListener('touchend',    cancel);
+  el.addEventListener('touchcancel', cancel);
+  el.addEventListener('contextmenu', function(e) {   // right-click on desktop, long-press on Android Chrome
     e.preventDefault();
-    openCtxMenu(v);
+    cancel();
+    trigger();
+  });
+  if (opts && opts.mouse) {                           // "long click" with a mouse
+    el.addEventListener('mousedown', function(e) { if (e.button === 0) { cancel(); timer = setTimeout(fire, 500); } });
+    el.addEventListener('mouseup',    cancel);
+    el.addEventListener('mouseleave', cancel);
+  }
+}
+
+// Long-press / right-click -> context menu. getMenu() -> { item, actions } | null
+function attachLongPress(el, getMenu) {
+  onLongPress(el, function() {
+    var m = getMenu();
+    if (m) openCtxMenu(m.item, m.actions);
   });
 }
 
@@ -1083,7 +1224,71 @@ progress.addEventListener('input', function() {
   if (PARTY) return;
   if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
 });
-volume.addEventListener('input', function() { audio.volume = volume.value; });
+// ── Volume (speaker button opens a slider popover) ──
+var btnVol  = document.getElementById('btn-vol');
+var volPop  = document.getElementById('vol-pop');
+var volPct  = document.getElementById('vol-pct');
+var _volTouchedAt = 0;
+var _volSendTimer = null;
+
+function volIcon(v) {
+  return v <= 0 ? '\uD83D\uDD07' : v < 0.34 ? '\uD83D\uDD08' : v < 0.67 ? '\uD83D\uDD09' : '\uD83D\uDD0A';
+}
+function setVolumeUI(v) {
+  volume.value = v;
+  volPct.textContent = Math.round(v * 100) + '%';
+  btnVol.textContent = volIcon(v);
+}
+function applyVolume(v) {
+  v = Math.max(0, Math.min(1, parseFloat(v) || 0));
+  _volTouchedAt = Date.now();
+  setVolumeUI(v);
+  if (PARTY) {
+    // volume lives on the Pi (mpv): send it, lightly throttled
+    clearTimeout(_volSendTimer);
+    _volSendTimer = setTimeout(function() {
+      fetch(API + '/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd: 'volume', value: Math.round(v * 100) })
+      }).catch(function() {});
+    }, 60);
+  } else {
+    audio.volume = v;
+    try { localStorage.setItem('pitube-volume', String(v)); } catch (e) {}
+  }
+}
+volume.addEventListener('input', function() { applyVolume(volume.value); });
+btnVol.addEventListener('click', function(e) { e.stopPropagation(); volPop.classList.toggle('open'); });
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('vol-wrap').contains(e.target)) volPop.classList.remove('open');
+});
+(function() {
+  var saved = 1;
+  try { var sv = parseFloat(localStorage.getItem('pitube-volume')); if (!isNaN(sv)) saved = sv; } catch (e) {}
+  setVolumeUI(saved);
+  audio.volume = saved;   // overridden by the server value in party mode
+})();
+
+// ── QR code panel (party mode only): shown by default on wide screens, long-click on the logo toggles it ──
+var qrPanel = document.getElementById('qr-panel');
+var qrImg   = document.getElementById('qr-img');
+var qrUrlEl = document.getElementById('qr-url');
+var qrErrEl = document.getElementById('qr-err');
+var _qrLoaded = false;
+
+function qrWide() { return window.matchMedia ? window.matchMedia('(min-width: 900px)').matches : true; }
+function setQr(show) {
+  qrPanel.classList.toggle('show', show);
+  if (show && !_qrLoaded) { _qrLoaded = true; qrImg.src = API + '/qr.svg'; }
+}
+function toggleQr() { setQr(!qrPanel.classList.contains('show')); }
+
+qrImg.addEventListener('error', function() { qrImg.style.display = 'none'; qrErrEl.style.display = 'block'; });
+document.getElementById('qr-close').addEventListener('click', function() { setQr(false); });
+qrPanel.addEventListener('click', function(e) { if (e.target === qrPanel) setQr(false); }); // tap on the pop-up backdrop
+
+var _logoLink = document.getElementById('logo-img').parentNode;
 
 document.addEventListener('keydown', function(e) {
   if (e.code !== 'Space') return;
@@ -1107,9 +1312,14 @@ function initParty() {
   PARTY = true;
   document.getElementById('party-badge').classList.add('on');
 
-  // Hide audio element and volume slider (audio lives on server)
+  // Hide audio element (audio lives on the server; the volume slider now controls mpv)
   audio.style.display = 'none';
-  volume.style.display = 'none';
+
+  // QR code: party mode only. Visible by default when there is room beside the results;
+  // long-click / right-click on the logo shows or hides it (pop-up on narrow screens).
+  if (qrWide()) setQr(true);
+  onLongPress(_logoLink, toggleQr, { mouse: true });
+  _logoLink.addEventListener('click', function(e) { if (lpRecent()) e.preventDefault(); });
 
   // SSE connection
   var es = new EventSource(API + '/stream');
@@ -1149,7 +1359,12 @@ function sendCmd(obj) {
   }).catch(function() { _cmdPending = false; });
 }
 
+var _lastQueueSig = null;
+
 function applyPartyState(state) {
+  // Volume (don't fight the slider while the user is dragging it)
+  if (state.volume != null && Date.now() - _volTouchedAt > 1500) setVolumeUI(state.volume / 100);
+
   if (_cmdPending) return; // ignore SSE updates while a command is in flight
   // Update shared queue/idx
   playlist     = state.queue || [];
@@ -1174,7 +1389,10 @@ function applyPartyState(state) {
   }
 
   updatePlCount();
-  renderPlaylist();
+  // The server broadcasts every second: only rebuild the queue DOM when it really changed,
+  // otherwise taps / long-presses get lost on elements that were just replaced.
+  var sig = playlist.map(function(t) { return t.id; }).join(',') + '|' + plCurrentIdx;
+  if (sig !== _lastQueueSig) { _lastQueueSig = sig; renderPlaylist(); }
   loadingBar.style.display = 'none';
 }
 
@@ -1246,8 +1464,9 @@ fetch(API + '/mode')
   .then(function(r) { return r.json(); })
   .then(function(data) {
     loadSavedPlaylists();
+    if (data.url) qrUrlEl.textContent = data.url.replace(/^https?:\/\//, '');
     if (data.party) {
-      document.getElementById('logo-img').src = 'assets/pitube_party.png';
+      document.getElementById('logo-img').src = 'assets/logo_party.png';
       initParty();
       activatePartyControls();
     }

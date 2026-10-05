@@ -10,6 +10,7 @@ System:   sudo apt install mpv
 
 import sys
 import os
+import io
 import json
 import time
 import queue
@@ -24,6 +25,21 @@ import yt_dlp
 
 # ── Mode ─────────────────────────────────────────────────────────────────────
 PARTY_MODE = "--party" in sys.argv
+
+# ── Public address (encoded in the QR code) ──────────────────────────────────
+# Phones can't use "localhost", so the QR code must carry the Pi's LAN address.
+# Default: 192.168.1.42:5000. Override with  PITUBE_URL=192.168.1.50:5000  or  --url=192.168.1.50:5000
+def _public_url():
+    url = os.environ.get("PITUBE_URL", "")
+    for a in sys.argv[1:]:
+        if a.startswith("--url="):
+            url = a[len("--url="):]
+    url = (url or "192.168.1.42:5000").strip()
+    if "://" not in url:
+        url = "http://" + url
+    return url
+
+PUBLIC_URL = _public_url()
 
 app = Flask(__name__)
 CORS(app)
@@ -133,7 +149,21 @@ def assets(filename):
 # ── Mode endpoint (so the front knows which mode is active) ───────────────────
 @app.route("/mode")
 def mode():
-    return jsonify({"party": PARTY_MODE})
+    return jsonify({"party": PARTY_MODE, "url": PUBLIC_URL})
+
+# ── QR code pointing to the server address (needs: pip install segno) ─────────
+@app.route("/qr.svg")
+def qr_svg():
+    try:
+        import segno
+    except ImportError:
+        return Response("QR unavailable: pip install segno", status=501, mimetype="text/plain")
+    buf = io.BytesIO()
+    segno.make(PUBLIC_URL, error="m").save(
+        buf, kind="svg", scale=8, border=3, dark="#000", light="#fff",
+        omitsize=True, xmldecl=False)
+    return Response(buf.getvalue(), mimetype="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 # =============================================================================
 # PARTY MODE
@@ -147,6 +177,7 @@ if PARTY_MODE:
         "is_playing":   False,
         "position":     0.0,   # seconds
         "duration":     0.0,
+        "volume":       100,   # mpv volume, 0-100
     }
 
     mpv_proc     = None        # subprocess.Popen
@@ -245,11 +276,14 @@ if PARTY_MODE:
             except Exception:
                 mpv_proc.kill()
 
+        with party_lock:
+            vol = party_state["volume"]
         mpv_cmd = [
             "mpv",
             "--no-video",
             "--input-ipc-server=" + ipc_path,
             "--really-quiet",
+            "--volume=" + str(vol),
         ]
         if AUDIO_DEVICE:
             mpv_cmd += ["--ao=alsa", "--audio-device=" + AUDIO_DEVICE]
@@ -339,6 +373,32 @@ if PARTY_MODE:
                 party_state["queue"].append(track)
             broadcast(state_snapshot())
 
+        elif cmd == "play_list":
+            # Replace the whole queue with these tracks and start from the first one
+            tracks = data.get("tracks") or []
+            if not tracks:
+                return jsonify({"error": "Missing tracks"}), 400
+            with party_lock:
+                party_state["queue"] = list(tracks)
+                party_state["current_idx"] = -1
+            threading.Thread(target=play_track, args=(0,), daemon=True).start()
+
+        elif cmd == "add_many":
+            tracks = data.get("tracks") or []
+            with party_lock:
+                party_state["queue"].extend(tracks)
+            broadcast(state_snapshot())
+
+        elif cmd == "volume":
+            try:
+                vol = max(0, min(100, int(float(data.get("value", 100)))))
+            except (TypeError, ValueError):
+                return jsonify({"error": "Bad volume"}), 400
+            with party_lock:
+                party_state["volume"] = vol
+            mpv_send(["set_property", "volume", vol])
+            broadcast(state_snapshot())
+
         elif cmd == "pause_toggle":
             with party_lock:
                 party_state["is_playing"] = not party_state["is_playing"]
@@ -418,4 +478,5 @@ if PARTY_MODE:
 if __name__ == "__main__":
     mode_str = " [PARTY MODE]" if PARTY_MODE else ""
     print("PiTube backend running on http://0.0.0.0:5000" + mode_str)
+    print("QR code points to " + PUBLIC_URL)
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
