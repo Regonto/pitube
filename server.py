@@ -30,6 +30,13 @@ CORS(app)
 
 PLAYLISTS_FILE = os.path.join(os.path.dirname(__file__), "playlists.json")
 
+# Party mode audio output (mpv).
+# Default: send audio straight to the HDMI port through ALSA (no PipeWire needed).
+# Override with e.g.  PITUBE_AUDIO_DEVICE="alsa/hdmi:CARD=vc4hdmi,DEV=1"
+# Set PITUBE_AUDIO_DEVICE="" to let mpv pick the system default output.
+# List available devices with:  mpv --audio-device=help
+AUDIO_DEVICE = os.environ.get("PITUBE_AUDIO_DEVICE", "alsa/hdmi:CARD=vc4hdmi,DEV=0")
+
 YDL_SEARCH_OPTS = {
     "quiet": True, "no_warnings": True,
     "extract_flat": True, "default_search": "ytsearch", "skip_download": True,
@@ -238,13 +245,16 @@ if PARTY_MODE:
             except Exception:
                 mpv_proc.kill()
 
-        mpv_proc = subprocess.Popen([
+        mpv_cmd = [
             "mpv",
             "--no-video",
             "--input-ipc-server=" + ipc_path,
             "--really-quiet",
-            audio_url_str,
-        ])
+        ]
+        if AUDIO_DEVICE:
+            mpv_cmd += ["--ao=alsa", "--audio-device=" + AUDIO_DEVICE]
+        mpv_cmd.append(audio_url_str)
+        mpv_proc = subprocess.Popen(mpv_cmd)
 
         broadcast(state_snapshot())
 
