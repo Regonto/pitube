@@ -342,7 +342,7 @@ def qr_svg():
 # =============================================================================
 if PARTY_MODE:
     # ── Shared state ─────────────────────────────────────────────────────────
-    party_lock = threading.Lock()
+    party_lock = threading.RLock()   # re-entrant: state_snapshot() takes it again
     party_state = {
         "queue":        [],    # list of track dicts
         "current_idx":  -1,
@@ -352,10 +352,18 @@ if PARTY_MODE:
         "volume":       100,   # mpv volume, 0-100
         "locked":       False, # party lock (see _is_master)
         "playlists_rev": 0,    # bumped when a saved playlist changes -> clients re-fetch /playlists
+        "loading":      False, # a track was chosen and mpv is not playing it yet
     }
     party_master = {"id": None}   # never broadcast: it would let anyone impersonate the master
 
     mpv_proc     = None        # subprocess.Popen
+    # Every play_track() call gets a number. Anything started earlier (a slow extraction, the thread
+    # watching the previous mpv) sees it is out of date and stops instead of launching / advancing.
+    play_gen     = {"n": 0}
+    # ready: mpv's IPC socket answers, so commands reach it. Before that they would be lost silently,
+    # so pause / seek are remembered and applied the moment mpv is ready (see _settle).
+    mpv_state    = {"ready": False, "pending_seek": None}
+    launch_lock  = threading.Lock()   # one mpv started / stopped at a time
     ipc_path     = "/tmp/pitube-mpv.sock"
     sse_clients  = []          # list of queue.Queue
 
@@ -418,41 +426,34 @@ if PARTY_MODE:
         best = sorted(af, key=lambda f: f.get("abr") or 0, reverse=True)[0]
         return best["url"], info
 
+    # ── audio URL cache (so the next track starts instantly) ─────────────────
+    _audio_cache = {}              # video id -> (expires_at, (url, {"duration": ...}))
+    _audio_locks = {}
+    _audio_guard = threading.Lock()
+
+    def get_audio_info(vid_id):
+        hit = _audio_cache.get(vid_id)
+        if hit and hit[0] > time.time():
+            return hit[1]
+        with _audio_guard:
+            lk = _audio_locks.setdefault(vid_id, threading.Lock())
+        with lk:                   # the same track asked twice at once is looked up once
+            hit = _audio_cache.get(vid_id)
+            if hit and hit[0] > time.time():
+                return hit[1]
+            url, info = extract_audio_url(vid_id)
+            out = (url, {"duration": info.get("duration")})
+            if url:
+                if len(_audio_cache) > 50:
+                    _audio_cache.clear()
+                _audio_cache[vid_id] = (time.time() + 3000, out)
+            return out
+
     # ── mpv launcher ─────────────────────────────────────────────────────────
-    def play_track(idx):
-        global mpv_proc
-        with party_lock:
-            if idx < 0 or idx >= len(party_state["queue"]):
-                party_state["is_playing"] = False
-                broadcast(state_snapshot())
-                return
-            track = party_state["queue"][idx]
-            party_state["current_idx"] = idx
-            party_state["is_playing"]  = True
-            party_state["position"]    = 0.0
+    def _mpv_alive():
+        return mpv_proc is not None and mpv_proc.poll() is None
 
-        # Extract URL in background so we don't block the lock
-        audio_url_str, info = extract_audio_url(track["id"])
-        if not audio_url_str:
-            with party_lock:
-                party_state["is_playing"] = False
-            broadcast(state_snapshot())
-            return
-
-        # Update duration from yt-dlp info
-        with party_lock:
-            party_state["duration"] = info.get("duration") or track.get("duration") or 0
-
-        # --video: look the video stream up now, so it is cached when the devices ask for it
-        if VIDEO_MODE:
-            def _prefetch_video(vid):
-                try:
-                    get_video_info(vid)
-                except Exception:
-                    pass
-            threading.Thread(target=_prefetch_video, args=(track["id"],), daemon=True).start()
-
-        # Kill previous mpv
+    def _stop_mpv():
         if mpv_proc and mpv_proc.poll() is None:
             mpv_proc.terminate()
             try:
@@ -460,43 +461,162 @@ if PARTY_MODE:
             except Exception:
                 mpv_proc.kill()
 
+    def play_track(idx):
+        global mpv_proc
         with party_lock:
-            vol = party_state["volume"]
-        mpv_cmd = [
-            "mpv",
-            "--no-video",
-            "--input-ipc-server=" + ipc_path,
-            "--really-quiet",
-            "--volume=" + str(vol),
-        ]
-        if AUDIO_DEVICE:
-            mpv_cmd += ["--ao=alsa", "--audio-device=" + AUDIO_DEVICE]
-        mpv_cmd.append(audio_url_str)
-        mpv_proc = subprocess.Popen(mpv_cmd)
+            if idx < 0 or idx >= len(party_state["queue"]):
+                return                      # nothing to play there: leave everything as it is
+            track = party_state["queue"][idx]
+            play_gen["n"] += 1
+            gen = play_gen["n"]
+            party_state["current_idx"] = idx
+            party_state["is_playing"]  = True
+            party_state["position"]    = 0.0
+            party_state["loading"]     = True
+            mpv_state["ready"]         = False
+            mpv_state["pending_seek"]  = None
+        broadcast(state_snapshot())         # the screens show "loading" right away
 
-        broadcast(state_snapshot())
+        try:
+            url, info = get_audio_info(track["id"])
+        except Exception:
+            url, info = None, {}
 
-        # Wait for mpv to finish, then auto-advance
-        def _wait():
-            mpv_proc.wait()
-            with party_lock:
-                cur = party_state["current_idx"]
-                nxt = cur + 1
-                playing = party_state["is_playing"]
-            if playing and nxt < len(party_state["queue"]):
-                play_track(nxt)
+        failed = False
+        with party_lock:
+            if gen != play_gen["n"]:
+                return                      # something else was chosen while this one was loading
+            if not url:
+                party_state["is_playing"] = False
+                party_state["loading"]    = False
+                failed = True
             else:
+                party_state["duration"] = info.get("duration") or track.get("duration") or 0
+        if failed:
+            with launch_lock:               # the previous track must not keep playing under a "stopped" icon
+                with party_lock:
+                    current = gen == play_gen["n"]
+                if current:
+                    _stop_mpv()
+            broadcast(state_snapshot())
+            return
+
+        with launch_lock:
+            with party_lock:
+                if gen != play_gen["n"]:
+                    return
+            _stop_mpv()                     # (may take a moment: re-check afterwards)
+            with party_lock:
+                if gen != play_gen["n"]:
+                    return
+                vol       = party_state["volume"]
+                want_play = party_state["is_playing"]
+                start     = mpv_state["pending_seek"]
+                mpv_state["pending_seek"] = None
+            mpv_cmd = [
+                "mpv",
+                "--no-video",
+                "--input-ipc-server=" + ipc_path,
+                "--really-quiet",
+                "--volume=" + str(vol),
+            ]
+            if not want_play:               # the user pressed pause while it was loading
+                mpv_cmd.append("--pause")
+            if start:                       # ...or jumped somewhere in the track
+                mpv_cmd.append("--start=%s" % start)
+            if AUDIO_DEVICE:
+                mpv_cmd += ["--ao=alsa", "--audio-device=" + AUDIO_DEVICE]
+            mpv_cmd.append(url)
+            try:
+                proc = subprocess.Popen(mpv_cmd)
+            except Exception:
                 with party_lock:
                     party_state["is_playing"] = False
+                    party_state["loading"]    = False
                 broadcast(state_snapshot())
+                return
+            mpv_proc = proc
 
-        threading.Thread(target=_wait, daemon=True).start()
+        threading.Thread(target=_watch,  args=(proc, gen), daemon=True).start()
+        threading.Thread(target=_settle, args=(proc, gen), daemon=True).start()
+
+    def _watch(proc, gen):
+        """When this mpv exits by itself, go to the next track."""
+        proc.wait()
+        with party_lock:
+            if gen != play_gen["n"]:
+                return                      # it was replaced or stopped on purpose, not a real end
+            nxt      = party_state["current_idx"] + 1
+            playing  = party_state["is_playing"]
+            has_next = nxt < len(party_state["queue"])
+        if playing and has_next:
+            play_track(nxt)
+        else:
+            with party_lock:
+                if gen == play_gen["n"]:
+                    party_state["is_playing"] = False
+                    party_state["loading"]    = False
+                    mpv_state["ready"]        = False
+            broadcast(state_snapshot())
+
+    def _settle(proc, gen):
+        """As soon as mpv answers on its IPC socket, make it match what the user asked for while it was
+        loading (pause / volume / jump), then let the screens know it is playing."""
+        deadline = time.time() + 10
+        while time.time() < deadline and gen == play_gen["n"] and proc.poll() is None:
+            if mpv_get_property("pause") is not None:
+                break
+            time.sleep(0.1)
+        if proc.poll() is not None:
+            return                          # it died: _watch deals with it
+        with party_lock:
+            if gen != play_gen["n"]:
+                return
+            want_play = party_state["is_playing"]
+            seek      = mpv_state["pending_seek"]
+            mpv_state["pending_seek"] = None
+            mpv_send(["set_property", "pause", not want_play])
+            mpv_send(["set_property", "volume", party_state["volume"]])
+            if seek:
+                mpv_send(["seek", seek, "absolute"])
+            mpv_state["ready"]     = True
+            party_state["loading"] = False
+        broadcast(state_snapshot())
+        threading.Thread(target=_warm_up, args=(gen,), daemon=True).start()
+
+    def _warm_up(gen):
+        """Music is running: look up this track's video and the NEXT track now, so the next change is instant."""
+        with party_lock:
+            if gen != play_gen["n"]:
+                return
+            q, i = party_state["queue"], party_state["current_idx"]
+            cur = q[i]["id"]     if 0 <= i < len(q)     else None
+            nxt = q[i + 1]["id"] if 0 <= i + 1 < len(q) else None
+        jobs = []
+        if VIDEO_MODE and cur: jobs.append((get_video_info, cur))
+        if nxt:                jobs.append((get_audio_info, nxt))
+        if VIDEO_MODE and nxt: jobs.append((get_video_info, nxt))
+        for fn, vid in jobs:
+            if gen != play_gen["n"]:
+                return
+            try:
+                fn(vid)
+            except Exception:
+                pass
 
     # ── Position poller ───────────────────────────────────────────────────────
     def _position_poller():
         while True:
             time.sleep(1)
-            if party_state["is_playing"]:
+            if not mpv_state["ready"]:
+                continue                    # still loading: nothing to read
+            with party_lock:
+                want_play = party_state["is_playing"]
+            paused = mpv_get_property("pause")
+            if paused is not None and bool(paused) == want_play:
+                # mpv disagrees with the icon (a command got lost, or something else toggled it): mpv follows the UI
+                mpv_send(["set_property", "pause", not want_play])
+            if want_play:
                 pos = mpv_get_property("time-pos")
                 if pos is not None:
                     with party_lock:
@@ -617,10 +737,23 @@ if PARTY_MODE:
             broadcast(state_snapshot())
 
         elif cmd == "pause_toggle":
+            start_idx = None
             with party_lock:
-                party_state["is_playing"] = not party_state["is_playing"]
-            mpv_send(["cycle", "pause"])
-            broadcast(state_snapshot())
+                if not _mpv_alive() and not party_state["loading"]:
+                    # nothing is playing (queue finished / cleared): "play" must start something,
+                    # not just flip the icon
+                    q, cur = party_state["queue"], party_state["current_idx"]
+                    if q:
+                        start_idx = cur if 0 <= cur < len(q) else 0
+                else:
+                    party_state["is_playing"] = not party_state["is_playing"]
+                    # an explicit value (never "cycle"): it can't drift out of step with the icon.
+                    # If mpv isn't ready yet this is lost, and _settle applies it once it is.
+                    mpv_send(["set_property", "pause", not party_state["is_playing"]])
+            if start_idx is not None:
+                threading.Thread(target=play_track, args=(start_idx,), daemon=True).start()
+            else:
+                broadcast(state_snapshot())
 
         elif cmd == "next":
             with party_lock:
@@ -633,10 +766,13 @@ if PARTY_MODE:
             threading.Thread(target=play_track, args=(prv,), daemon=True).start()
 
         elif cmd == "seek":
-            pos = float(data.get("position", 0))
-            mpv_send(["seek", pos, "absolute"])
+            pos = max(0.0, float(data.get("position", 0)))
             with party_lock:
                 party_state["position"] = pos
+                if mpv_state["ready"]:
+                    mpv_send(["seek", pos, "absolute"])
+                else:
+                    mpv_state["pending_seek"] = pos     # still loading: applied when mpv starts
             broadcast(state_snapshot())
 
         elif cmd == "play_idx":
@@ -651,6 +787,9 @@ if PARTY_MODE:
                     if party_state["current_idx"] == idx:
                         party_state["current_idx"] = -1
                         party_state["is_playing"] = False
+                        party_state["loading"] = False
+                        play_gen["n"] += 1              # cancels a load that is still in progress
+                        mpv_state["ready"] = False
                         if mpv_proc and mpv_proc.poll() is None:
                             mpv_proc.terminate()
                     elif party_state["current_idx"] > idx:
@@ -679,6 +818,9 @@ if PARTY_MODE:
                 party_state["queue"] = []
                 party_state["current_idx"] = -1
                 party_state["is_playing"] = False
+                party_state["loading"] = False
+                play_gen["n"] += 1                      # cancels a load that is still in progress
+                mpv_state["ready"] = False
             if mpv_proc and mpv_proc.poll() is None:
                 mpv_proc.terminate()
             broadcast(state_snapshot())

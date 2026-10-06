@@ -425,7 +425,7 @@
 
 <!-- Footer -->
 <div id="video-stage">
-  <video id="video" muted playsinline></video>
+  <video id="video" muted playsinline preload="auto"></video>
   <div id="video-msg"></div>
   <div id="video-ctrl">
     <button class="vbtn" id="video-fs" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
@@ -1508,7 +1508,7 @@ function clearVideoEl() { vid.pause(); vid.removeAttribute('src'); vid.load(); }
 
 function videoClock() {
   if (PARTY) return { t: _srv.pos + (_srv.playing ? (Date.now() - _srv.at) / 1000 : 0), playing: _srv.playing };
-  return { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended };
+  return { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended && audio.readyState >= 3 };
 }
 // How to react to the gap between the video and the master clock (seconds, + = video is ahead)
 function videoDriftAction(drift) {
@@ -1569,7 +1569,7 @@ vid.addEventListener('loadedmetadata', function() {
 vid.addEventListener('canplay', function() { setVidMsg(''); syncVideo(); });
 vid.addEventListener('playing', function() { setVidMsg(''); });
 vid.addEventListener('error',   function() { if (vid.getAttribute('src')) setVidMsg('Video unavailable'); });
-['play', 'pause', 'seeked', 'ended', 'timeupdate'].forEach(function(ev) {   // normal mode: the audio is the clock
+['play', 'pause', 'seeked', 'ended', 'timeupdate', 'waiting', 'playing', 'canplay'].forEach(function(ev) {   // normal mode: the audio is the clock
   audio.addEventListener(ev, function() { if (!PARTY) syncVideo(); });
 });
 
@@ -1670,7 +1670,7 @@ var _plRev = null;
 function applyPartyState(state) {
   // Volume (don't fight the slider while the user is dragging it)
   if (state.volume != null && Date.now() - _volTouchedAt > 1500) setVolumeUI(state.volume / 100);
-  _srv.pos = state.position || 0; _srv.playing = !!state.is_playing; _srv.at = Date.now();
+  _srv.pos = state.position || 0; _srv.playing = !!state.is_playing && !state.loading; _srv.at = Date.now();
   if (VIDEO) {
     var cur = state.queue && state.queue[state.current_idx];
     videoTrackChanged(cur ? cur.id : null);
@@ -1714,7 +1714,7 @@ function applyPartyState(state) {
   // otherwise taps / long-presses get lost on elements that were just replaced.
   var sig = playlist.map(function(t) { return t.id; }).join(',') + '|' + plCurrentIdx;
   if (sig !== _lastQueueSig) { _lastQueueSig = sig; renderPlaylist(); }
-  loadingBar.style.display = 'none';
+  loadingBar.style.display = state.loading ? 'block' : 'none';
 }
 
 // Override playback functions in party mode
