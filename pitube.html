@@ -187,6 +187,46 @@
     #qr-panel .qr-card { width: min(300px, 80vw); }
   }
 
+  /* ── Video (server started with --video) ── */
+  #btn-video { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
+  #btn-video:hover { background: #3d3d3d; }
+  #btn-video.on { background: var(--red); border-color: var(--red); }
+  /* The stage covers everything above the player (header included): the video is drawn as large as
+     possible with its own aspect ratio (object-fit: contain), so it touches the screen edges in one direction. */
+  #video-stage { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: #000; z-index: 150; align-items: center; justify-content: center; }
+  #video-stage.show { display: flex; }
+  #video-stage:fullscreen, #video-stage:-webkit-full-screen { top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+  #video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #video-msg { position: absolute; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 0 20px; }
+  #video-msg:empty { display: none; }
+  #video-ctrl { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  #video-stage.ctrl #video-ctrl { opacity: 1; pointer-events: auto; }
+  #video-stage:fullscreen:not(.ctrl) { cursor: none; }
+  .vbtn { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 8px; width: 44px; height: 44px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .vbtn:hover { background: rgba(255,255,255,.2); }
+  .vbtn svg { width: 24px; height: 24px; fill: currentColor; }
+
+  /* ── Party lock ── */
+  .lock-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  #btn-lock { flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 36px; height: 36px; font-size: 18px; cursor: pointer; color: var(--text); display: flex; align-items: center; justify-content: center; }
+  #btn-lock:hover:not(:disabled) { background: var(--border); }
+  #btn-lock.on { background: var(--red); border-color: var(--red); }
+  #btn-lock:disabled { opacity: .55; cursor: not-allowed; }
+  #lock-label { font-size: 13px; color: var(--muted); line-height: 1.3; }
+  #pin-row { display: none; align-items: center; gap: 8px; margin-top: 8px; }
+  #pin-row.show { display: flex; }
+  #pin-input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 18px; letter-spacing: 6px; text-align: center; outline: none; }
+  #pin-input:focus { border-color: var(--red); }
+  #pin-cancel { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+  #pin-cancel:hover { background: var(--border); color: var(--text); }
+  /* Locked + not the master: hide / dim everything except "add to end of queue" and "save to playlist" */
+  body.guest-locked #btn-pause, body.guest-locked #progress, body.guest-locked #btn-vol { opacity: .35; pointer-events: none; }
+  body.guest-locked .pl-btns, body.guest-locked .pl-drag, body.guest-locked #btn-clear-playlist,
+  body.guest-locked .btn-add-next, body.guest-locked .btn-spl-play, body.guest-locked .t-play, body.guest-locked .t-next,
+  body.guest-locked .spl-btn.del, body.guest-locked .spl-track-del { display: none !important; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--footer-h, 110px) + 16px); transform: translateX(-50%) translateY(10px); background: #323232; color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 14px; max-width: 90vw; text-align: center; z-index: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
   /* ── Touch / long-press helpers ── */
   .card, .pl-item, .spl-track { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   .spl-track-more { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; line-height: 1; }
@@ -255,6 +295,7 @@
     #btn-pause { width: 40px; height: 40px; font-size: 18px; }
     #btn-save-footer { font-size: 12px; padding: 0 8px; height: 34px; }
     #btn-vol { width: 40px; height: 40px; font-size: 18px; }
+    #btn-video { width: 40px; height: 40px; font-size: 18px; }
     #btn-playlist { font-size: 16px; padding: 0 10px; height: 44px; }
     #btn-playlist svg { width: 20px; height: 20px; }
     .footer-progress { gap: 4px; }
@@ -358,6 +399,14 @@
       <img id="qr-img" alt="QR code" draggable="false">
       <div id="qr-err">QR unavailable: run <b>pip install segno</b> then restart the server.</div>
       <div id="qr-url"></div>
+      <div class="lock-row">
+        <button id="btn-lock" title="Lock the party">&#128275;</button>
+        <span id="lock-label">Party open</span>
+      </div>
+      <div id="pin-row">
+        <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="PIN">
+        <button id="pin-cancel" title="Cancel">&#10005;</button>
+      </div>
     </div>
   </aside>
   <div id="results-col">
@@ -372,8 +421,18 @@
   <button id="load-more" style="display:none">Load more</button>
   </div>
 </main>
+<div id="toast"></div>
 
 <!-- Footer -->
+<div id="video-stage">
+  <video id="video" muted playsinline></video>
+  <div id="video-msg"></div>
+  <div id="video-ctrl">
+    <button class="vbtn" id="video-fs" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+    <button class="vbtn" id="video-close" title="Hide the video">&#10005;</button>
+  </div>
+</div>
+
 <div id="footer">
   <div class="footer-top">
     <img id="footer-thumb" src="" alt="">
@@ -390,6 +449,7 @@
         <span id="vol-pct">100%</span>
       </div>
     </div>
+    <button id="btn-video" title="Show the video (F = fullscreen)" style="display:none">&#127916;</button>
     <button id="btn-playlist" title="Queue &amp; Playlists">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>
       <span id="pl-count">0</span>
@@ -550,16 +610,33 @@ function makeItem(v) { return { id: v.id, title: v.title, channel: v.channel, th
 function loadSavedPlaylists() {
   fetch(API + '/playlists')
     .then(function(r) { return r.json(); })
-    .then(function(data) { savedPlaylists = data || {}; renderSaved(); })
-    .catch(function() { savedPlaylists = {}; });
+    .then(function(data) { applySavedPlaylists(data || {}); })
+    .catch(function() {});
 }
 
-function persistSaved() {
-  fetch(API + '/playlists', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(savedPlaylists)
-  }).catch(function() {});
+// The server is the single source of truth: show exactly what it has
+function applySavedPlaylists(data) {
+  savedPlaylists = data;
+  renderSaved();
+  if (savePicker.classList.contains('open')) syncPicker();
+}
+
+// One change at a time, applied by the server on its current copy (so devices never overwrite each other)
+function playlistOp(body) {
+  return fetch(API + '/playlists/op', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) {
+      return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; });
+    })
+    .then(function(x) {
+      if (x.status === 200 && x.d.playlists) { applySavedPlaylists(x.d.playlists); }
+      else {
+        if (x.status === 403) toast('Party locked: you can only add tracks to playlists');
+        else if (x.status === 404) toast('That playlist no longer exists');
+        loadSavedPlaylists();      // undo the optimistic change
+      }
+      return x;
+    })
+    .catch(function() { toast('Could not reach the server'); loadSavedPlaylists(); });
 }
 
 // ── Tabs ──
@@ -742,6 +819,7 @@ function plDelete(i) {
 }
 
 document.getElementById('btn-clear-playlist').addEventListener('click', function() {
+  if (PARTY) return;
   playlist = []; plCurrentIdx = -1; updatePlCount(); renderPlaylist();
 });
 
@@ -798,7 +876,7 @@ function renderSaved() {
       if (!confirm('Delete playlist "' + name + '"?')) return;
       delete savedPlaylists[name];
       if (openSplName === name) openSplName = null;
-      persistSaved();
+      playlistOp({ op: 'delete', name: name });
       renderSaved();
     });
 
@@ -809,6 +887,7 @@ function renderSaved() {
       var tracks = savedPlaylists[name];
       if (!tracks || tracks.length === 0) return;
       if (PARTY) {
+        if (guestBlocked()) return;
         sendCmd({ cmd: 'play_list', tracks: tracks.map(function(t) { return makeItem(t); }) });
       } else {
         playlist = tracks.map(function(t) { return makeItem(t); });
@@ -874,8 +953,8 @@ function renderSaved() {
         e.stopPropagation();
         var pl = btn.dataset.pl;
         var idx = parseInt(btn.dataset.idx);
-        savedPlaylists[pl].splice(idx, 1);
-        persistSaved();
+        var removed = savedPlaylists[pl].splice(idx, 1)[0];
+        if (removed) playlistOp({ op: 'remove_track', name: pl, id: removed.id });
         renderSaved();
       });
     });
@@ -887,6 +966,7 @@ function renderSaved() {
 // Play one track right now (both modes)
 function playTrackNow(t) {
   if (PARTY) {
+    if (guestBlocked()) return;
     sendCmd({ cmd: 'play', track: makeItem(t) });
   } else {
     playlist.splice(0, 0, makeItem(t));
@@ -904,7 +984,7 @@ btnCreatePl.addEventListener('click', function() {
   if (savedPlaylists[name]) { alert('A playlist with this name already exists.'); return; }
   savedPlaylists[name] = [];
   newPlInput.value = '';
-  persistSaved();
+  playlistOp({ op: 'create', name: name });
   renderSaved();
 });
 newPlInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') btnCreatePl.click(); });
@@ -930,6 +1010,7 @@ function renderPickerList() {
   names.forEach(function(name) {
     var row = document.createElement('div');
     row.className = 'picker-item';
+    row.dataset.name = name;
     var cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = savedPlaylists[name].some(function(t) { return t.id === pickerItem.id; });
@@ -948,14 +1029,28 @@ function renderPickerList() {
       var inList = list.some(function(t) { return t.id === pickerItem.id; });
       if (cb.checked && !inList) {
         list.push(pickerItem);
+        playlistOp({ op: 'add_track', name: name, track: pickerItem });
       } else if (!cb.checked && inList) {
         savedPlaylists[name] = list.filter(function(t) { return t.id !== pickerItem.id; });
+        playlistOp({ op: 'remove_track', name: name, id: pickerItem.id });
       }
       count.textContent = savedPlaylists[name].length;
-      persistSaved();
       renderSaved();
     });
     pickerList.appendChild(row);
+  });
+}
+
+// Update the open picker in place when the server's playlists changed under it
+function syncPicker() {
+  var names = Object.keys(savedPlaylists);
+  var rows  = pickerList.querySelectorAll('.picker-item');
+  var same  = rows.length === names.length && names.every(function(n, i) { return rows[i].dataset.name === n; });
+  if (!same) { renderPickerList(); return; }
+  rows.forEach(function(row) {
+    var list = savedPlaylists[row.dataset.name];
+    row.querySelector('input').checked = list.some(function(t) { return t.id === pickerItem.id; });
+    row.querySelector('.picker-item-count').textContent = list.length;
   });
 }
 
@@ -967,7 +1062,7 @@ btnPickerCreate.addEventListener('click', function() {
   if (savedPlaylists[name]) { alert('A playlist with this name already exists.'); return; }
   savedPlaylists[name] = [];
   pickerNewInput.value = '';
-  persistSaved();
+  playlistOp({ op: 'create', name: name });
   renderPickerList();
 });
 pickerNewInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') btnPickerCreate.click(); });
@@ -1003,6 +1098,7 @@ function playFromPlaylist(idx) {
 }
 
 function startAudio(v) {
+  videoTrackChanged(v.id);
   footerThumb.src = v.thumbnail;
   footerTitle.textContent = v.title;
   footerChan.textContent  = v.channel;
@@ -1059,6 +1155,7 @@ function openCtxMenu(item, actions) {
   ctxThumb.src = item.thumbnail || '';
   ctxTitle.textContent = item.title || '';
   ctxActions.innerHTML = '';
+  actions = actions.filter(function(a) { return !(a.master && guestLocked()); });
   actions.forEach(function(a) {
     var b = document.createElement('button');
     b.className = 'ctx-btn' + (a.danger ? ' danger' : '');
@@ -1097,8 +1194,8 @@ window.addEventListener('popstate', function() {
 // Menus per context
 function cardMenu(v, idx) {
   return { item: v, actions: [
-    { icon: '\u25B6', label: 'Play now',         run: function() { playFromSearch(idx); } },
-    { icon: '+1',      label: 'Play next',        run: function() { addToQueue(v, 'next'); } },
+    { icon: '\u25B6', master: true, label: 'Play now',         run: function() { playFromSearch(idx); } },
+    { icon: '+1',      master: true, label: 'Play next',        run: function() { addToQueue(v, 'next'); } },
     { icon: '+',       label: 'Add to queue',     run: function() { addToQueue(v, 'end'); } },
     { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(v)); } }
   ]};
@@ -1112,10 +1209,10 @@ function queuePlayNext(i) {
 }
 function queueMenu(item, i) {
   return { item: item, actions: [
-    { icon: '\u25B6', label: 'Play now',         run: function() { playFromPlaylist(i); } },
-    { icon: '+1',      label: 'Play next',        run: function() { queuePlayNext(i); } },
+    { icon: '\u25B6', master: true, label: 'Play now',         run: function() { playFromPlaylist(i); } },
+    { icon: '+1',      master: true, label: 'Play next',        run: function() { queuePlayNext(i); } },
     { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(item)); } },
-    { icon: '\u2715', label: 'Remove from queue', danger: true, run: function() { plDelete(i); } }
+    { icon: '\u2715', master: true, label: 'Remove from queue', danger: true, run: function() { plDelete(i); } }
   ]};
 }
 
@@ -1123,13 +1220,13 @@ function savedTrackMenu(pl, ti) {
   var t = savedPlaylists[pl] && savedPlaylists[pl][ti];
   if (!t) return null;
   return { item: t, actions: [
-    { icon: '\u25B6', label: 'Play now',     run: function() { playTrackNow(t); } },
-    { icon: '+1',      label: 'Play next',    run: function() { addToQueue(t, 'next'); } },
+    { icon: '\u25B6', master: true, label: 'Play now',     run: function() { playTrackNow(t); } },
+    { icon: '+1',      master: true, label: 'Play next',    run: function() { addToQueue(t, 'next'); } },
     { icon: '+',       label: 'Add to queue', run: function() { addToQueue(t, 'end'); } },
     { icon: '\u2605', label: 'Save to another playlist', run: function() { openSavePicker(makeItem(t)); } },
-    { icon: '\u2715', label: 'Remove from this playlist', danger: true, run: function() {
+    { icon: '\u2715', master: true, label: 'Remove from this playlist', danger: true, run: function() {
         savedPlaylists[pl].splice(ti, 1);
-        persistSaved();
+        playlistOp({ op: 'remove_track', name: pl, id: t.id });
         renderSaved();
     } }
   ]};
@@ -1240,6 +1337,7 @@ function setVolumeUI(v) {
   btnVol.textContent = volIcon(v);
 }
 function applyVolume(v) {
+  if (PARTY && guestLocked()) return;
   v = Math.max(0, Math.min(1, parseFloat(v) || 0));
   _volTouchedAt = Date.now();
   setVolumeUI(v);
@@ -1249,7 +1347,7 @@ function applyVolume(v) {
     _volSendTimer = setTimeout(function() {
       fetch(API + '/command', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: apiHeaders(),
         body: JSON.stringify({ cmd: 'volume', value: Math.round(v * 100) })
       }).catch(function() {});
     }, 60);
@@ -1290,6 +1388,101 @@ qrPanel.addEventListener('click', function(e) { if (e.target === qrPanel) setQr(
 
 var _logoLink = document.getElementById('logo-img').parentNode;
 
+// ── Party lock: whoever locks becomes the "master"; the server enforces it ──
+var CLIENT_ID = (function() {
+  var id = null;
+  try { id = localStorage.getItem('pitube-client-id'); } catch (e) {}
+  if (!id) {
+    var a = new Uint32Array(4);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+    else for (var i = 0; i < 4; i++) a[i] = Math.floor(Math.random() * 4294967296);
+    id = Array.prototype.map.call(a, function(n) { return n.toString(36); }).join('') + Date.now().toString(36);
+    try { localStorage.setItem('pitube-client-id', id); } catch (e) {}
+  }
+  return id;
+})();
+function apiHeaders() { return { 'Content-Type': 'application/json', 'X-Client-Id': CLIENT_ID }; }
+
+var _locked = false, _isMaster = false, _lockSeen = null;
+var btnLock   = document.getElementById('btn-lock');
+var lockLabel = document.getElementById('lock-label');
+var _toastTimer = null;
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { t.classList.remove('show'); }, 2600);
+}
+function guestLocked() { return PARTY && _locked && !_isMaster; }
+function guestBlocked() {
+  if (!guestLocked()) return false;
+  toast('Party locked: you can only add tracks to the end of the queue or to a playlist');
+  return true;
+}
+function renderLock() {
+  document.body.classList.toggle('guest-locked', guestLocked());
+  btnLock.textContent = _locked ? '\uD83D\uDD12' : '\uD83D\uDD13';   // lock / unlocked padlock
+  btnLock.classList.toggle('on', _locked);
+  btnLock.disabled = _locked && !_isMaster && !PIN_REQUIRED;
+  btnLock.title = !_locked ? 'Lock the party: others can only add to the end of the queue'
+                : _isMaster ? 'Unlock the party' : PIN_REQUIRED ? 'Locked: enter the PIN to unlock' : 'Locked by the master';
+  lockLabel.textContent = !_locked ? 'Party open'
+                : _isMaster ? 'Locked: tap to unlock' : PIN_REQUIRED ? 'Locked: PIN needed to unlock' : 'Locked by the master';
+  document.getElementById('party-badge').textContent = _locked ? 'PARTY \uD83D\uDD12' : 'PARTY';
+}
+function refreshLock() {
+  if (!PARTY) return;
+  fetch(API + '/lock', { headers: apiHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { _locked = !!d.locked; _isMaster = !!d.master; renderLock(); })
+    .catch(function() {});
+}
+
+// Optional 4-digit PIN (server started with:  --party -pin 1234)
+var PIN_REQUIRED = false;
+var pinRow   = document.getElementById('pin-row');
+var pinInput = document.getElementById('pin-input');
+var _pinBusy = false;
+
+function openPin()  { pinRow.classList.add('show'); pinInput.value = ''; pinInput.focus(); }
+function closePin() { pinRow.classList.remove('show'); pinInput.value = ''; }
+
+function sendLock(cmd, pin) {
+  var body = { cmd: cmd };
+  if (pin != null) body.pin = pin;
+  _pinBusy = true;
+  fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) {
+      return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; });
+    })
+    .then(function(x) {
+      _pinBusy = false;
+      if (x.status === 200) closePin();
+      else if (x.d.error === 'bad_pin') { toast('Wrong PIN'); pinInput.value = ''; pinInput.focus(); }
+      else if (x.status === 429) { toast('Too many attempts, try again in ' + (x.d.retry_in || 60) + ' s'); pinInput.value = ''; }
+      else if (x.status === 403) toast('Only the master can unlock the party');
+      refreshLock();
+    })
+    .catch(function() { _pinBusy = false; });
+}
+
+btnLock.addEventListener('click', function() {
+  if (!PARTY) return;
+  if (PIN_REQUIRED) {                       // ask for the code first
+    if (pinRow.classList.contains('show')) closePin(); else openPin();
+  } else {
+    sendLock(_locked ? 'unlock' : 'lock');
+  }
+});
+pinInput.addEventListener('input', function() {
+  pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
+  if (pinInput.value.length === 4 && !_pinBusy) sendLock(_locked ? 'unlock' : 'lock', pinInput.value);
+});
+pinInput.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePin(); });
+document.getElementById('pin-cancel').addEventListener('click', closePin);
+
 document.addEventListener('keydown', function(e) {
   if (e.code !== 'Space') return;
   var tag = document.activeElement.tagName;
@@ -1298,8 +1491,118 @@ document.addEventListener('keydown', function(e) {
   _pauseHandler();
 });
 
+// ── Video (server started with --video) ──
+// The video is a MUTED companion of the audio, kept in sync with it:
+//   normal mode: follows the <audio> element        party mode: follows the position the server broadcasts
+// (in party mode the sound comes from mpv on the Pi, so every screen shows the video silently)
+var VIDEO     = false;
+var stage     = document.getElementById('video-stage');
+var vid       = document.getElementById('video');
+var vidMsgEl  = document.getElementById('video-msg');
+var btnVideo  = document.getElementById('btn-video');
+var _vidShown = false, _vidTrackId = null, _vidReq = 0, _ctrlTimer = null;
+var _srv      = { pos: 0, playing: false, at: 0 };   // last party clock received from the server
+
+function setVidMsg(t) { vidMsgEl.textContent = t || ''; }
+function clearVideoEl() { vid.pause(); vid.removeAttribute('src'); vid.load(); }
+
+function videoClock() {
+  if (PARTY) return { t: _srv.pos + (_srv.playing ? (Date.now() - _srv.at) / 1000 : 0), playing: _srv.playing };
+  return { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended };
+}
+// How to react to the gap between the video and the master clock (seconds, + = video is ahead)
+function videoDriftAction(drift) {
+  var a = Math.abs(drift);
+  if (a > 0.8)  return 'seek';
+  if (a > 0.15) return drift > 0 ? 'slower' : 'faster';   // small gap: nudge the speed, no visible jump
+  return 'ok';
+}
+function syncVideo() {
+  if (!VIDEO || !_vidShown || !vid.getAttribute('src') || vid.readyState < 1) return;
+  var c = videoClock(), t = c.t;
+  if (isFinite(vid.duration)) t = Math.min(t, vid.duration);
+  if (!c.playing) {
+    if (!vid.paused) vid.pause();
+    if (Math.abs(vid.currentTime - t) > 0.3) vid.currentTime = t;
+    vid.playbackRate = 1;
+    return;
+  }
+  var act = videoDriftAction(vid.currentTime - t);
+  if (act === 'seek') { vid.currentTime = t; vid.playbackRate = 1; }
+  else vid.playbackRate = act === 'faster' ? 1.05 : act === 'slower' ? 0.95 : 1;
+  if (vid.paused) { var pr = vid.play(); if (pr && pr.catch) pr.catch(function() {}); }
+}
+
+function loadVideo(id) {
+  var req = ++_vidReq;                  // a newer request makes older answers obsolete
+  clearVideoEl();
+  if (!id) { setVidMsg('Nothing playing'); return; }
+  setVidMsg('Loading video\u2026');
+  fetch(API + '/video-url?id=' + encodeURIComponent(id))
+    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(x) {
+      if (req !== _vidReq) return;
+      if (!x.ok || !x.d.url) { setVidMsg('Video unavailable'); return; }
+      vid.muted = true;
+      vid.src = x.d.url;
+    })
+    .catch(function() { if (req === _vidReq) setVidMsg('Video unavailable'); });
+}
+function videoTrackChanged(id) {
+  if (id === _vidTrackId) return;
+  _vidTrackId = id;
+  if (_vidShown) loadVideo(id);         // hidden video = no download, no decoding
+}
+function showVideo(show) {
+  _vidShown = show;
+  stage.classList.toggle('show', show);
+  btnVideo.classList.toggle('on', show);
+  if (show) { loadVideo(_vidTrackId); pokeVideoCtrl(); }
+  else { _vidReq++; clearVideoEl(); setVidMsg(''); if (fsElement()) exitFs(); }
+}
+
+vid.addEventListener('loadedmetadata', function() {
+  var c = videoClock();
+  try { vid.currentTime = isFinite(vid.duration) ? Math.min(c.t, vid.duration) : c.t; } catch (e) {}
+  syncVideo();
+});
+vid.addEventListener('canplay', function() { setVidMsg(''); syncVideo(); });
+vid.addEventListener('playing', function() { setVidMsg(''); });
+vid.addEventListener('error',   function() { if (vid.getAttribute('src')) setVidMsg('Video unavailable'); });
+['play', 'pause', 'seeked', 'ended', 'timeupdate'].forEach(function(ev) {   // normal mode: the audio is the clock
+  audio.addEventListener(ev, function() { if (!PARTY) syncVideo(); });
+});
+
+// Fullscreen: the stage (video only) goes fullscreen; button, F key or double-click
+function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function exitFs()    { var f = document.exitFullscreen || document.webkitExitFullscreen; if (f) f.call(document); }
+function toggleFullscreen() {
+  if (!_vidShown) showVideo(true);
+  if (fsElement()) { exitFs(); return; }
+  var req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+  if (req) { var pr = req.call(stage); if (pr && pr.catch) pr.catch(function() {}); }
+  else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();   // iPhone Safari: only <video> can go fullscreen
+}
+function pokeVideoCtrl() {              // show the buttons, hide them again after 3 s
+  stage.classList.add('ctrl');
+  clearTimeout(_ctrlTimer);
+  _ctrlTimer = setTimeout(function() { stage.classList.remove('ctrl'); }, 3000);
+}
+btnVideo.addEventListener('click', function() { showVideo(!_vidShown); });
+document.getElementById('video-fs').addEventListener('click', function(e) { e.stopPropagation(); toggleFullscreen(); });
+document.getElementById('video-close').addEventListener('click', function(e) { e.stopPropagation(); showVideo(false); });
+stage.addEventListener('dblclick', toggleFullscreen);
+['mousemove', 'touchstart', 'click'].forEach(function(ev) { stage.addEventListener(ev, pokeVideoCtrl, { passive: true }); });
+document.addEventListener('keydown', function(e) {
+  if (!VIDEO || (e.key !== 'f' && e.key !== 'F') || e.ctrlKey || e.metaKey || e.altKey) return;
+  var tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;     // typing a search / a PIN
+  e.preventDefault();
+  toggleFullscreen();
+});
+
 // ── Drawer ──
-function openDrawer()  { drawer.classList.add('open'); drawerOverlay.classList.add('open'); renderPlaylist(); }
+function openDrawer()  { drawer.classList.add('open'); drawerOverlay.classList.add('open'); renderPlaylist(); loadSavedPlaylists(); }
 function closeDrawer() { drawer.classList.remove('open'); drawerOverlay.classList.remove('open'); }
 btnPlaylist.addEventListener('click', openDrawer);
 btnCloseDrawer.addEventListener('click', closeDrawer);
@@ -1320,6 +1623,7 @@ function initParty() {
   if (qrWide()) setQr(true);
   onLongPress(_logoLink, toggleQr, { mouse: true });
   _logoLink.addEventListener('click', function(e) { if (lpRecent()) e.preventDefault(); });
+  refreshLock();
 
   // SSE connection
   var es = new EventSource(API + '/stream');
@@ -1346,9 +1650,10 @@ function sendCmd(obj) {
 
   fetch(API + '/command', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: apiHeaders(),
     body: JSON.stringify(obj)
-  }).then(function() {
+  }).then(function(r) {
+    if (r.status === 403) { toast('Party locked by the master'); refreshLock(); _lastQueueSig = null; }
     // Once server confirms, re-fetch state and unblock
     setTimeout(function() {
       fetch(API + '/party-state')
@@ -1360,10 +1665,26 @@ function sendCmd(obj) {
 }
 
 var _lastQueueSig = null;
+var _plRev = null;
 
 function applyPartyState(state) {
   // Volume (don't fight the slider while the user is dragging it)
   if (state.volume != null && Date.now() - _volTouchedAt > 1500) setVolumeUI(state.volume / 100);
+  _srv.pos = state.position || 0; _srv.playing = !!state.is_playing; _srv.at = Date.now();
+  if (VIDEO) {
+    var cur = state.queue && state.queue[state.current_idx];
+    videoTrackChanged(cur ? cur.id : null);
+    syncVideo();
+  }
+  if (state.playlists_rev !== undefined && state.playlists_rev !== _plRev) {   // another device changed a saved playlist
+    _plRev = state.playlists_rev;
+    loadSavedPlaylists();
+  }
+  if (state.locked !== undefined) {            // someone locked / unlocked the party
+    _locked = !!state.locked;
+    if (state.locked !== _lockSeen) { _lockSeen = state.locked; refreshLock(); }
+    renderLock();
+  }
 
   if (_cmdPending) return; // ignore SSE updates while a command is in flight
   // Update shared queue/idx
@@ -1402,6 +1723,7 @@ var _addToQueue       = addToQueue;
 var _playFromPlaylist = playFromPlaylist;
 
 function partyPlayFromSearch(idx) {
+  if (guestBlocked()) return;
   var v = results[idx];
   document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('playing'); });
   var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
@@ -1411,16 +1733,19 @@ function partyPlayFromSearch(idx) {
 }
 
 function partyAddToQueue(v, where) {
+  if (where === 'next' && guestBlocked()) return;
   sendCmd({ cmd: where === 'next' ? 'add_next' : 'add_end', track: makeItem(v) });
   btnPlaylist.style.background = 'var(--red)';
   setTimeout(function() { btnPlaylist.style.background = ''; }, 300);
 }
 
 function partyPlayFromPlaylist(idx) {
+  if (guestBlocked()) return;
   sendCmd({ cmd: 'play_idx', idx: idx });
 }
 
 function partyTogglePause() {
+  if (guestBlocked()) return;
   sendCmd({ cmd: 'pause_toggle' });
 }
 
@@ -1435,17 +1760,19 @@ function activatePartyControls() {
 
   // Progress seek
   progress.addEventListener('change', function() {
+    if (guestBlocked()) return;
     var parts = timeDur.textContent.split(':');
     var dur = parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
     if (dur > 0) sendCmd({ cmd: 'seek', position: (progress.value / 100) * dur });
   });
 
   // Queue reorder / delete
-  plMove   = function(from, to) { sendCmd({ cmd: 'reorder', from: from, to: to }); };
-  plDelete = function(i)        { sendCmd({ cmd: 'remove', idx: i }); };
+  plMove   = function(from, to) { if (guestBlocked()) return; sendCmd({ cmd: 'reorder', from: from, to: to }); };
+  plDelete = function(i)        { if (guestBlocked()) return; sendCmd({ cmd: 'remove', idx: i }); };
 
   // Clear queue
   document.getElementById('btn-clear-playlist').addEventListener('click', function() {
+    if (guestBlocked()) return;
     sendCmd({ cmd: 'clear' });
   });
 
@@ -1465,6 +1792,9 @@ fetch(API + '/mode')
   .then(function(data) {
     loadSavedPlaylists();
     if (data.url) qrUrlEl.textContent = data.url.replace(/^https?:\/\//, '');
+    PIN_REQUIRED = !!data.pin;
+    VIDEO = !!data.video;
+    if (VIDEO) btnVideo.style.display = 'flex';
     if (data.party) {
       document.getElementById('logo-img').src = 'assets/logo_party.png';
       initParty();

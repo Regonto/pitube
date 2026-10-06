@@ -39,6 +39,41 @@ PITUBE_URL=192.168.1.50:5000 python3 server.py --party
 python3 server.py --party --url=192.168.1.50:5000
 ```
 
+### Video
+Start the server with `--video` (alone or with `--party`) to get a video button in the player:
+```bash
+python3 server.py --party --video
+```
+- The button opens the video over the whole screen except the player, as large as possible with its own aspect ratio.
+- Fullscreen: button on the video, double-click, or the **F** key (**F** again or Esc to leave).
+- The video is a muted copy kept in sync with the music (the sound still comes from mpv / the browser).
+- Nothing is downloaded while the video is hidden.
+- Quality is capped at 720p (H.264 first, light for a Pi). Change it with `PITUBE_VIDEO_HEIGHT=1080 python3 server.py --video`.
+
+### Saved playlists are shared
+Saved playlists live on the server (`playlists.json`) and every change (add / remove a track, create, delete)
+is applied there one at a time, so several devices can edit at once without overwriting each other.
+In party mode, every connected device refreshes within a second when someone changes a playlist.
+
+### Party lock
+In party mode, the padlock under the QR code locks the party. Whoever locks it becomes the *master*
+(identified by a random id kept in their browser) and is the only one who can unlock it.
+While locked, everybody else can only:
+- add tracks to the **end of the queue**
+- add tracks to a **saved playlist** (creating playlists / adding tracks is fine, removing is refused)
+
+Everything else (play, skip, pause, seek, volume, reorder, remove, clear...) is refused by the server.
+The Pi itself (a browser on `localhost`) is always master, so a lock can never get stuck;
+restarting the server also resets it.
+
+**Optional PIN** (party mode only): start the server with a 4-digit code and locking / unlocking will ask for it.
+```bash
+python3 server.py --party -pin 1234
+```
+With a PIN, anyone who knows the code can lock or unlock (from any device, the Pi included), so a guest can't
+lock the party before you do. Without `-pin`, no code is asked. `-pin` is ignored (with a warning) without `--party`.
+After 5 wrong codes from the same address, that address is locked out for 60 seconds.
+
 Logos are read from `assets/logo.png` (normal) and `assets/logo_party.png` (party).
 
 ## Notes
