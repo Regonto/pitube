@@ -184,7 +184,7 @@
   /* Narrow screens: no room next to the results -> centered pop-up (tap outside to close) */
   @media (max-width: 899px) {
     #qr-panel.show { position: fixed; inset: 0; width: auto; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); z-index: 600; }
-    #qr-panel .qr-card { width: min(300px, 80vw); }
+    #qr-panel .qr-card { width: 300px; max-width: 80vw; }
   }
 
   /* ── Video (server started with --video) ── */
@@ -203,13 +203,17 @@
   #video-stage.ctrl #video-ctrl { opacity: 1; pointer-events: auto; }
   #video-stage:fullscreen:not(.ctrl) { cursor: none; }
   /* Small player (bottom right) while the user is searching: click it to enlarge again */
-  #video-stage.mini { --mini-w: min(360px, 46vw); top: auto; left: auto; right: 16px; bottom: calc(var(--footer-h, 110px) + 16px); width: var(--mini-w); height: calc(var(--mini-w) * 0.5625); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.6); overflow: hidden; cursor: pointer; }
+  /* Plain pixel sizes on purpose: min() / calc(var()) were ignored by some browsers, which made it nearly full-size */
+  #video-stage.mini { top: auto; left: auto; right: 16px; bottom: 126px; bottom: calc(var(--footer-h, 110px) + 16px); width: 240px; height: 135px; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.6); overflow: hidden; cursor: pointer; }
   #video-stage.mini:fullscreen, #video-stage.mini:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; }
   #video-stage.mini #video-ctrl { top: 6px; right: 6px; gap: 6px; }
   #video-stage.mini .vbtn { width: 32px; height: 32px; }
   #video-stage.mini .vbtn svg { width: 18px; height: 18px; }
   #video-stage.mini #video-msg { font-size: 12px; }
-  @media (max-width: 600px) { #video-stage.mini { --mini-w: min(240px, 58vw); right: 10px; bottom: calc(var(--footer-h, 110px) + 10px); } }
+  @media (max-width: 600px) { #video-stage.mini { width: 176px; height: 99px; right: 10px; bottom: 120px; bottom: calc(var(--footer-h, 110px) + 10px); } }
+  /* The small player must not hide the results: leave a gutter for it (wide screens), and room to scroll past it */
+  body.video-mini main { padding-bottom: 280px; padding-bottom: calc(var(--footer-h, 110px) + 170px); }
+  @media (min-width: 900px) { body.video-mini #results-col { margin-right: 272px; } }
   .vbtn { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 8px; width: 44px; height: 44px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
   .vbtn:hover { background: rgba(255,255,255,.2); }
   .vbtn svg { width: 24px; height: 24px; fill: currentColor; }
@@ -1590,6 +1594,7 @@ var ICON_BIG  = '<svg viewBox="0 0 24 24"><path d="M21 11V3h-8l3.29 3.29-10 10L3
 function setMini(on) {
   _vidMini = !!on;
   stage.classList.toggle('mini', _vidMini);
+  document.body.classList.toggle('video-mini', _vidMini);
   sizeBtn.innerHTML = _vidMini ? ICON_BIG : ICON_MINI;
   sizeBtn.title = _vidMini ? 'Enlarge the video' : 'Small player';
 }
