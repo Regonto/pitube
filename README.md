@@ -44,11 +44,14 @@ Start the server with `--video` (alone or with `--party`) to get a video button 
 ```bash
 python3 server.py --party --video
 ```
-- The button opens the video over the whole screen except the player, as large as possible with its own aspect ratio.
+- The button opens the video under the search bar and above the player, as large as possible with its own aspect ratio.
+- Launching a search shrinks it to a small player at the bottom right (click it, or the size button, to enlarge it again).
 - Fullscreen: button on the video, double-click, or the **F** key (**F** again or Esc to leave).
 - The video is a muted copy kept in sync with the music (the sound still comes from mpv / the browser).
-- Nothing is downloaded while the video is hidden.
-- Quality is capped at 720p (H.264 first, light for a Pi). Change it with `PITUBE_VIDEO_HEIGHT=1080 python3 server.py --video`.
+- It comes from the same YouTube lookup as the audio (no extra request), and nothing is downloaded while it is hidden.
+- If a video fails, it is retried twice with a fresh link, then the reason is shown on screen and printed in the server console (`[video] ...`).
+  Most failures are on YouTube's side: keep yt-dlp up to date with `pip install -U yt-dlp`.
+- Quality is capped at 720p (H.264 first, AV1 avoided: light for a Pi). Change it with `PITUBE_VIDEO_HEIGHT=1080 python3 server.py --video`.
 
 ### Saved playlists are shared
 Saved playlists live on the server (`playlists.json`) and every change (add / remove a track, create, delete)

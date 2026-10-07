@@ -193,15 +193,23 @@
   #btn-video.on { background: var(--red); border-color: var(--red); }
   /* The stage covers everything above the player (header included): the video is drawn as large as
      possible with its own aspect ratio (object-fit: contain), so it touches the screen edges in one direction. */
-  #video-stage { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: #000; z-index: 150; align-items: center; justify-content: center; }
+  #video-stage { display: none; position: fixed; top: var(--header-h, 56px); left: 0; right: 0; bottom: var(--footer-h, 110px); background: #000; z-index: 150; align-items: center; justify-content: center; }
   #video-stage.show { display: flex; }
   #video-stage:fullscreen, #video-stage:-webkit-full-screen { top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
   #video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-  #video-msg { position: absolute; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 0 20px; }
+  #video-msg { position: absolute; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 0 20px; white-space: pre-line; }
   #video-msg:empty { display: none; }
   #video-ctrl { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; }
   #video-stage.ctrl #video-ctrl { opacity: 1; pointer-events: auto; }
   #video-stage:fullscreen:not(.ctrl) { cursor: none; }
+  /* Small player (bottom right) while the user is searching: click it to enlarge again */
+  #video-stage.mini { --mini-w: min(360px, 46vw); top: auto; left: auto; right: 16px; bottom: calc(var(--footer-h, 110px) + 16px); width: var(--mini-w); height: calc(var(--mini-w) * 0.5625); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.6); overflow: hidden; cursor: pointer; }
+  #video-stage.mini:fullscreen, #video-stage.mini:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; }
+  #video-stage.mini #video-ctrl { top: 6px; right: 6px; gap: 6px; }
+  #video-stage.mini .vbtn { width: 32px; height: 32px; }
+  #video-stage.mini .vbtn svg { width: 18px; height: 18px; }
+  #video-stage.mini #video-msg { font-size: 12px; }
+  @media (max-width: 600px) { #video-stage.mini { --mini-w: min(240px, 58vw); right: 10px; bottom: calc(var(--footer-h, 110px) + 10px); } }
   .vbtn { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 8px; width: 44px; height: 44px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
   .vbtn:hover { background: rgba(255,255,255,.2); }
   .vbtn svg { width: 24px; height: 24px; fill: currentColor; }
@@ -428,6 +436,7 @@
   <video id="video" muted playsinline preload="auto"></video>
   <div id="video-msg"></div>
   <div id="video-ctrl">
+    <button class="vbtn" id="video-size" title="Small player"></button>
     <button class="vbtn" id="video-fs" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
     <button class="vbtn" id="video-close" title="Hide the video">&#10005;</button>
   </div>
@@ -554,9 +563,10 @@ var volume        = document.getElementById('volume');
 // Keep --footer-h in sync so the drawer / save picker never end up under the footer
 function syncFooterH() {
   document.documentElement.style.setProperty('--footer-h', document.getElementById('footer').offsetHeight + 'px');
+  document.documentElement.style.setProperty('--header-h', document.querySelector('header').offsetHeight + 'px');
 }
 syncFooterH();
-if (window.ResizeObserver) new ResizeObserver(syncFooterH).observe(document.getElementById('footer'));
+if (window.ResizeObserver) { var _ro = new ResizeObserver(syncFooterH); _ro.observe(document.getElementById('footer')); _ro.observe(document.querySelector('header')); }
 window.addEventListener('resize', syncFooterH);
 var loadMoreBtn   = document.getElementById('load-more');
 var btnPlaylist   = document.getElementById('btn-playlist');
@@ -667,6 +677,7 @@ searchForm.addEventListener('submit', function(e) {
 });
 
 function runSearch() {
+  if (VIDEO && _vidShown && !_vidMini) setMini(true);     // results must stay readable: the video becomes a small player
   fetch(API + '/search?q=' + encodeURIComponent(currentQuery) + '&n=' + currentN)
     .then(function(r) { return r.json(); })
     .then(function(data) { results = data.results || []; renderGrid(); })
@@ -1533,27 +1544,59 @@ function syncVideo() {
   if (vid.paused) { var pr = vid.play(); if (pr && pr.catch) pr.catch(function() {}); }
 }
 
+var VIDEO_RETRIES = 2, VIDEO_RETRY_MS = 1500;
+var _vidCur = { id: null, req: 0, attempt: 0 };
+var MEDIA_REASON = { 1: 'loading was aborted', 2: 'network error while loading the video',
+                     3: 'the video could not be decoded', 4: 'this video format is not supported here (or the link expired)' };
+
 function loadVideo(id) {
   var req = ++_vidReq;                  // a newer request makes older answers obsolete
   clearVideoEl();
+  _vidCur = { id: id, req: req, attempt: 0 };
   if (!id) { setVidMsg('Nothing playing'); return; }
-  setVidMsg('Loading video\u2026');
-  fetch(API + '/video-url?id=' + encodeURIComponent(id))
-    .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, d: d }; }); })
+  fetchVideoUrl(_vidCur);
+}
+function fetchVideoUrl(cur) {
+  setVidMsg(cur.attempt ? 'Retrying the video\u2026 (' + cur.attempt + '/' + VIDEO_RETRIES + ')' : 'Loading video\u2026');
+  fetch(API + '/video-url?id=' + encodeURIComponent(cur.id) + (cur.attempt ? '&fresh=1' : ''))
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { ok: r.ok, d: d }; }); })
     .then(function(x) {
-      if (req !== _vidReq) return;
-      if (!x.ok || !x.d.url) { setVidMsg('Video unavailable'); return; }
-      vid.muted = true;
-      vid.src = x.d.url;
+      if (cur.req !== _vidReq) return;
+      if (x.ok && x.d.url) { vid.muted = true; vid.src = x.d.url; return; }
+      videoFailed(cur, x.d && x.d.error);
     })
-    .catch(function() { if (req === _vidReq) setVidMsg('Video unavailable'); });
+    .catch(function() { videoFailed(cur, 'cannot reach the server'); });
+}
+function videoFailed(cur, reason) {
+  if (cur.req !== _vidReq) return;
+  clearVideoEl();
+  if (cur.attempt < VIDEO_RETRIES) {    // YouTube hiccups are usually brief: try again with a fresh link
+    cur.attempt++;
+    setVidMsg('Retrying the video\u2026 (' + cur.attempt + '/' + VIDEO_RETRIES + ')');
+    setTimeout(function() { if (cur.req === _vidReq) fetchVideoUrl(cur); }, VIDEO_RETRY_MS);
+    return;
+  }
+  setVidMsg('Video unavailable' + (reason ? '\n' + reason : ''));
 }
 function videoTrackChanged(id) {
   if (id === _vidTrackId) return;
   _vidTrackId = id;
   if (_vidShown) loadVideo(id);         // hidden video = no download, no decoding
 }
+var _vidMini = false;
+var sizeBtn = document.getElementById('video-size');
+var ICON_MINI = '<svg viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg>';
+var ICON_BIG  = '<svg viewBox="0 0 24 24"><path d="M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z"/></svg>';
+function setMini(on) {
+  _vidMini = !!on;
+  stage.classList.toggle('mini', _vidMini);
+  sizeBtn.innerHTML = _vidMini ? ICON_BIG : ICON_MINI;
+  sizeBtn.title = _vidMini ? 'Enlarge the video' : 'Small player';
+}
+setMini(false);
+
 function showVideo(show) {
+  setMini(false);
   _vidShown = show;
   stage.classList.toggle('show', show);
   btnVideo.classList.toggle('on', show);
@@ -1568,7 +1611,10 @@ vid.addEventListener('loadedmetadata', function() {
 });
 vid.addEventListener('canplay', function() { setVidMsg(''); syncVideo(); });
 vid.addEventListener('playing', function() { setVidMsg(''); });
-vid.addEventListener('error',   function() { if (vid.getAttribute('src')) setVidMsg('Video unavailable'); });
+vid.addEventListener('error', function() {
+  if (!vid.getAttribute('src') || _vidCur.req !== _vidReq) return;     // an old / emptied source: ignore
+  videoFailed(_vidCur, MEDIA_REASON[vid.error && vid.error.code] || 'the video could not be played');
+});
 ['play', 'pause', 'seeked', 'ended', 'timeupdate', 'waiting', 'playing', 'canplay'].forEach(function(ev) {   // normal mode: the audio is the clock
   audio.addEventListener(ev, function() { if (!PARTY) syncVideo(); });
 });
@@ -1578,6 +1624,7 @@ function fsElement() { return document.fullscreenElement || document.webkitFulls
 function exitFs()    { var f = document.exitFullscreen || document.webkitExitFullscreen; if (f) f.call(document); }
 function toggleFullscreen() {
   if (!_vidShown) showVideo(true);
+  if (_vidMini) setMini(false);          // fullscreen always means the big picture
   if (fsElement()) { exitFs(); return; }
   var req = stage.requestFullscreen || stage.webkitRequestFullscreen;
   if (req) { var pr = req.call(stage); if (pr && pr.catch) pr.catch(function() {}); }
@@ -1589,6 +1636,8 @@ function pokeVideoCtrl() {              // show the buttons, hide them again aft
   _ctrlTimer = setTimeout(function() { stage.classList.remove('ctrl'); }, 3000);
 }
 btnVideo.addEventListener('click', function() { showVideo(!_vidShown); });
+sizeBtn.addEventListener('click', function(e) { e.stopPropagation(); setMini(!_vidMini); });
+stage.addEventListener('click', function(e) { if (_vidMini && !e.target.closest('#video-ctrl')) setMini(false); });   // tap the small player = enlarge
 document.getElementById('video-fs').addEventListener('click', function(e) { e.stopPropagation(); toggleFullscreen(); });
 document.getElementById('video-close').addEventListener('click', function(e) { e.stopPropagation(); showVideo(false); });
 stage.addEventListener('dblclick', toggleFullscreen);

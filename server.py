@@ -183,38 +183,77 @@ def search():
     return jsonify({"results": videos})
 
 # ── Video URL (--video) ───────────────────────────────────────────────────────
-# The video is only a muted companion of the audio, so we want a video-only stream.
-# H.264 first (hardware-decoded on a Pi), capped at PITUBE_VIDEO_HEIGHT (default 720).
-_h = VIDEO_MAX_HEIGHT
-YDL_VIDEO_OPTS = {
-    "quiet": True, "no_warnings": True, "skip_download": True,
-    "format": ("bestvideo[height<={h}][vcodec^=avc1]/bestvideo[height<={h}][ext=mp4]/"
-               "bestvideo[height<={h}]/best[height<={h}]/best").format(h=_h),
-}
-_video_cache = {}                 # video id -> (expires_at, info)
-_video_lock  = threading.Lock()   # one extraction at a time; guests asking for the same track share it
-_VIDEO_TTL   = 3000               # seconds (YouTube links stay valid for hours)
+# The video is only a muted companion of the audio. It is picked from the SAME yt-dlp lookup as the
+# audio (the list of formats is already in it), so showing the video costs no extra request to YouTube.
+_video_cache   = {}               # video id -> (expires_at, info, born_at)
+_VIDEO_TTL     = 3000             # seconds (YouTube links stay valid for hours)
+_extract_locks = {}               # one lookup per track at a time; whoever else asks waits and shares it
+_extract_guard = threading.Lock()
 
-def get_video_info(vid_id):
-    """Cached yt-dlp lookup of a video-only stream. Returns a dict, or None if there is none."""
-    hit = _video_cache.get(vid_id)
-    if hit and hit[0] > time.time():
-        return hit[1]
-    with _video_lock:
-        hit = _video_cache.get(vid_id)
-        if hit and hit[0] > time.time():
-            return hit[1]
-        with yt_dlp.YoutubeDL(YDL_VIDEO_OPTS) as ydl:
-            info = ydl.extract_info("https://www.youtube.com/watch?v=" + vid_id, download=False)
-        f = (info.get("requested_formats") or [info])[0]
-        if not f.get("url"):
-            return None
-        out = {"url": f["url"], "ext": f.get("ext"), "width": f.get("width"),
-               "height": f.get("height"), "vcodec": f.get("vcodec")}
+def _id_lock(vid_id):
+    with _extract_guard:
+        return _extract_locks.setdefault(vid_id, threading.Lock())
+
+def _codec_rank(vcodec):
+    v = vcodec or ""
+    if v.startswith("avc1"):                return 0     # H.264: plays everywhere, hardware-decoded on a Pi
+    if v.startswith(("vp9", "vp09")):       return 1
+    if v.startswith("av01"):                return 3     # AV1: most Pi browsers can't decode it
+    return 2
+
+def pick_video_format(formats):
+    """Best playable video stream out of a yt-dlp format list (or None)."""
+    vids = [f for f in (formats or [])
+            if f.get("url") and (f.get("vcodec") or "none") != "none"
+            and f.get("protocol") in (None, "http", "https")]      # no HLS / DASH manifests: a <video> can't play them
+    if not vids:
+        return None
+    ok = [f for f in vids if (f.get("height") or 0) <= VIDEO_MAX_HEIGHT and _codec_rank(f.get("vcodec")) < 3]
+    if ok:
+        return min(ok, key=lambda f: (_codec_rank(f.get("vcodec")),
+                                      0 if (f.get("acodec") or "none") == "none" else 1,   # video-only is lighter
+                                      -(f.get("height") or 0), -(f.get("tbr") or 0)))
+    # nothing fits (only larger streams, or only AV1): take the smallest rather than nothing
+    return min(vids, key=lambda f: (_codec_rank(f.get("vcodec")) >= 3, f.get("height") or 0))
+
+def _remember_video(vid_id, info):
+    if not VIDEO_MODE:
+        return
+    f = pick_video_format(info.get("formats"))
+    if f:
         if len(_video_cache) > 50:
             _video_cache.clear()
-        _video_cache[vid_id] = (time.time() + _VIDEO_TTL, out)
-        return out
+        now = time.time()
+        _video_cache[vid_id] = (now + _VIDEO_TTL, {"url": f["url"], "ext": f.get("ext"), "width": f.get("width"),
+                                                   "height": f.get("height"), "vcodec": f.get("vcodec")}, now)
+
+def get_video_info(vid_id, fresh=False):
+    """Video stream for a track, or None. Normally already cached by the audio lookup of the same track.
+    fresh=True (the player failed on the cached link) looks it up again, unless that was done a moment ago."""
+    def cached():
+        hit = _video_cache.get(vid_id)
+        if hit and hit[0] > time.time() and (not fresh or time.time() - hit[2] < 10):
+            return hit[1]
+    got = cached()
+    if got:
+        return got
+    with _id_lock(vid_id):                       # an audio lookup of this track may be running: wait for it
+        got = cached()
+        if got:
+            return got
+        with yt_dlp.YoutubeDL(YDL_AUDIO_OPTS) as ydl:
+            info = ydl.extract_info("https://www.youtube.com/watch?v=" + vid_id, download=False)
+        _remember_video(vid_id, info)
+        hit = _video_cache.get(vid_id)
+        return hit[1] if hit else None
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+def _clean_err(e):
+    """A short readable reason out of a yt-dlp error."""
+    msg = _ANSI.sub("", str(e)).strip()
+    msg = re.sub(r"^ERROR:\s*", "", msg)
+    msg = re.sub(r"^\[[\w:.-]+\]\s*[\w-]{6,20}:\s*", "", msg)      # "[youtube] abc123XYZ_-: "
+    return msg[:160] or e.__class__.__name__
 
 @app.route("/video-url")
 def video_url():
@@ -224,11 +263,14 @@ def video_url():
     if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", vid_id):
         return jsonify({"error": "Bad id"}), 400
     try:
-        info = get_video_info(vid_id)
+        info = get_video_info(vid_id, fresh=request.args.get("fresh") == "1")
     except Exception as e:
-        return jsonify({"error": str(e)[:200]}), 502
+        msg = _clean_err(e)
+        print("[video] lookup failed for %s: %s" % (vid_id, msg))
+        return jsonify({"error": msg}), 502
     if not info:
-        return jsonify({"error": "No video stream found"}), 404
+        print("[video] no playable video stream for %s" % vid_id)
+        return jsonify({"error": "no playable video stream (audio only?)"}), 404
     return jsonify(info)
 
 # ── Audio URL (normal mode) ───────────────────────────────────────────────────
@@ -238,8 +280,10 @@ def audio_url():
     if not vid_id:
         return jsonify({"error": "Missing id"}), 400
     url = "https://www.youtube.com/watch?v=" + vid_id
-    with yt_dlp.YoutubeDL(YDL_AUDIO_OPTS) as ydl:
-        info = ydl.extract_info(url, download=False)
+    with _id_lock(vid_id):
+        with yt_dlp.YoutubeDL(YDL_AUDIO_OPTS) as ydl:
+            info = ydl.extract_info(url, download=False)
+        _remember_video(vid_id, info)          # --video: the video comes from this same lookup
     formats = info.get("formats", [])
     af = [f for f in formats if f.get("vcodec") == "none" and f.get("url")]
     if not af:
@@ -417,6 +461,7 @@ if PARTY_MODE:
         url = "https://www.youtube.com/watch?v=" + vid_id
         with yt_dlp.YoutubeDL(YDL_AUDIO_OPTS) as ydl:
             info = ydl.extract_info(url, download=False)
+        _remember_video(vid_id, info)              # --video: the video comes from this same lookup
         formats = info.get("formats", [])
         af = [f for f in formats if f.get("vcodec") == "none" and f.get("url")]
         if not af:
@@ -428,16 +473,12 @@ if PARTY_MODE:
 
     # ── audio URL cache (so the next track starts instantly) ─────────────────
     _audio_cache = {}              # video id -> (expires_at, (url, {"duration": ...}))
-    _audio_locks = {}
-    _audio_guard = threading.Lock()
 
     def get_audio_info(vid_id):
         hit = _audio_cache.get(vid_id)
         if hit and hit[0] > time.time():
             return hit[1]
-        with _audio_guard:
-            lk = _audio_locks.setdefault(vid_id, threading.Lock())
-        with lk:                   # the same track asked twice at once is looked up once
+        with _id_lock(vid_id):     # the same track asked twice at once is looked up once (audio AND video)
             hit = _audio_cache.get(vid_id)
             if hit and hit[0] > time.time():
                 return hit[1]
@@ -601,8 +642,8 @@ if PARTY_MODE:
                 return
             try:
                 fn(vid)
-            except Exception:
-                pass
+            except Exception as e:
+                print("[warm-up] %s %s: %s" % (fn.__name__, vid, _clean_err(e)))
 
     # ── Position poller ───────────────────────────────────────────────────────
     def _position_poller():
