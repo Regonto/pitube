@@ -53,6 +53,18 @@ python3 server.py --party --video
   Most failures are on YouTube's side: keep yt-dlp up to date with `pip install -U yt-dlp`.
 - Quality is capped at 720p (H.264 first, AV1 avoided: light for a Pi). Change it with `PITUBE_VIDEO_HEIGHT=1080 python3 server.py --video`.
 
+### Keyboard and touch controls
+| Action | Keyboard | Touch / mouse |
+|---|---|---|
+| +10 s / -10 s | Right / Left arrow | double-tap the right / left half of the video |
+| Volume +5 % / -5 % | Up / Down arrow (while the big video is up) | |
+| x2 speed | | hold 1 s on the video (mouse or finger), until you let go |
+| Fullscreen | F | button, or double-click |
+
+- Left / Right work anywhere (except while typing in a field); Up / Down only while the big video is up, otherwise they keep scrolling the page.
+- Launching a track opens the video (big) if it is hidden. If the small player is up it stays small and only its video changes. Automatic changes of track never open anything.
+- In party mode the x2 speed is applied to mpv, and falls back to x1 by itself if the device that asked for it disappears.
+
 ### Saved playlists are shared
 Saved playlists live on the server (`playlists.json`) and every change (add / remove a track, create, delete)
 is applied there one at a time, so several devices can edit at once without overwriting each other.

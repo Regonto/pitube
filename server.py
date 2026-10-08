@@ -397,6 +397,7 @@ if PARTY_MODE:
         "locked":       False, # party lock (see _is_master)
         "playlists_rev": 0,    # bumped when a saved playlist changes -> clients re-fetch /playlists
         "loading":      False, # a track was chosen and mpv is not playing it yet
+        "speed":        1.0,   # playback speed (hold on the video = x2)
     }
     party_master = {"id": None}   # never broadcast: it would let anyone impersonate the master
 
@@ -408,6 +409,9 @@ if PARTY_MODE:
     # so pause / seek are remembered and applied the moment mpv is ready (see _settle).
     mpv_state    = {"ready": False, "pending_seek": None}
     launch_lock  = threading.Lock()   # one mpv started / stopped at a time
+    # A speed above 1 only lasts while the device that asked for it keeps confirming it (every few
+    # seconds): if that device disappears while the finger is still down, the speed falls back to 1.
+    speed_lease  = {"until": 0.0}
     ipc_path     = "/tmp/pitube-mpv.sock"
     sse_clients  = []          # list of queue.Queue
 
@@ -514,6 +518,7 @@ if PARTY_MODE:
             party_state["is_playing"]  = True
             party_state["position"]    = 0.0
             party_state["loading"]     = True
+            party_state["speed"]       = 1.0           # a new track always starts at normal speed
             mpv_state["ready"]         = False
             mpv_state["pending_seek"]  = None
         broadcast(state_snapshot())         # the screens show "loading" right away
@@ -618,6 +623,7 @@ if PARTY_MODE:
             mpv_state["pending_seek"] = None
             mpv_send(["set_property", "pause", not want_play])
             mpv_send(["set_property", "volume", party_state["volume"]])
+            mpv_send(["set_property", "speed", party_state["speed"]])
             if seek:
                 mpv_send(["seek", seek, "absolute"])
             mpv_state["ready"]     = True
@@ -651,8 +657,15 @@ if PARTY_MODE:
             time.sleep(1)
             if not mpv_state["ready"]:
                 continue                    # still loading: nothing to read
+            speed_reset = False
             with party_lock:
                 want_play = party_state["is_playing"]
+                if party_state["speed"] != 1.0 and time.time() > speed_lease["until"]:
+                    party_state["speed"] = 1.0           # the device that asked for it is gone
+                    mpv_send(["set_property", "speed", 1.0])
+                    speed_reset = True
+            if speed_reset:
+                broadcast(state_snapshot())
             paused = mpv_get_property("pause")
             if paused is not None and bool(paused) == want_play:
                 # mpv disagrees with the icon (a command got lost, or something else toggled it): mpv follows the UI
@@ -775,6 +788,17 @@ if PARTY_MODE:
             with party_lock:
                 party_state["volume"] = vol
             mpv_send(["set_property", "volume", vol])
+            broadcast(state_snapshot())
+
+        elif cmd == "speed":
+            try:
+                v = max(1.0, min(2.0, float(data.get("value", 1))))
+            except (TypeError, ValueError):
+                return jsonify({"error": "Bad speed"}), 400
+            with party_lock:
+                party_state["speed"] = v
+                speed_lease["until"] = time.time() + 15 if v != 1.0 else 0.0
+                mpv_send(["set_property", "speed", v])   # lost if mpv isn't ready yet: _settle applies it
             broadcast(state_snapshot())
 
         elif cmd == "pause_toggle":

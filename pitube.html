@@ -199,6 +199,11 @@
   #video { width: 100%; height: 100%; object-fit: contain; background: #000; }
   #video-msg { position: absolute; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 0 20px; white-space: pre-line; }
   #video-msg:empty { display: none; }
+  #video-stage { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #video-hint { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color: #fff; padding: 8px 18px; border-radius: 22px; font-size: 20px; font-weight: 600; pointer-events: none; opacity: 0; transition: opacity .15s; white-space: nowrap; z-index: 2; }
+  #video-hint.show { opacity: 1; }
+  #video-hint.left { left: 22%; } #video-hint.right { left: 78%; }
+  #video-stage.fast::after { content: '\00D7 2  \25B6\25B6'; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(41,98,255,.9); color: #fff; padding: 6px 16px; border-radius: 18px; font-size: 18px; font-weight: 700; pointer-events: none; z-index: 2; }
   #video-ctrl { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; }
   #video-stage.ctrl #video-ctrl { opacity: 1; pointer-events: auto; }
   #video-stage:fullscreen:not(.ctrl) { cursor: none; }
@@ -439,6 +444,7 @@
 <div id="video-stage">
   <video id="video" muted playsinline preload="auto"></video>
   <div id="video-msg"></div>
+  <div id="video-hint"></div>
   <div id="video-ctrl">
     <button class="vbtn" id="video-size" title="Small player"></button>
     <button class="vbtn" id="video-fs" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
@@ -458,7 +464,7 @@
     <div id="vol-wrap">
       <button id="btn-vol" title="Volume">&#128266;</button>
       <div id="vol-pop">
-        <input type="range" id="volume" min="0" max="1" step="0.02" value="1">
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
         <span id="vol-pct">100%</span>
       </div>
     </div>
@@ -903,6 +909,7 @@ function renderSaved() {
       if (!tracks || tracks.length === 0) return;
       if (PARTY) {
         if (guestBlocked()) return;
+        userOpensVideo(makeItem(tracks[0]));
         sendCmd({ cmd: 'play_list', tracks: tracks.map(function(t) { return makeItem(t); }) });
       } else {
         playlist = tracks.map(function(t) { return makeItem(t); });
@@ -982,8 +989,10 @@ function renderSaved() {
 function playTrackNow(t) {
   if (PARTY) {
     if (guestBlocked()) return;
+    userOpensVideo(makeItem(t));
     sendCmd({ cmd: 'play', track: makeItem(t) });
   } else {
+    userOpensVideo(makeItem(t));
     playlist.splice(0, 0, makeItem(t));
     plCurrentIdx = 0;
     updatePlCount(); renderPlaylist();
@@ -1090,6 +1099,7 @@ btnConfirmSave.addEventListener('click', closeSavePicker);
 function playFromSearch(idx) {
   var v = results[idx];
   var item = makeItem(v);
+  userOpensVideo(item);
   if (plCurrentIdx === 0 && playlist.length > 0 && playlist[0].id === item.id) {
     // already at head
   } else {
@@ -1105,8 +1115,9 @@ function playFromSearch(idx) {
   startAudio(playlist[0]);
 }
 
-function playFromPlaylist(idx) {
+function playFromPlaylist(idx, auto) {      // auto = the previous track just ended (not a choice of the user)
   if (idx < 0 || idx >= playlist.length) return;
+  if (!auto) userOpensVideo(playlist[idx]);
   plCurrentIdx = idx;
   renderPlaylist();
   startAudio(playlist[idx]);
@@ -1143,7 +1154,7 @@ function startAudio(v) {
 
 audio.addEventListener('ended', function() {
   var next = plCurrentIdx + 1;
-  if (next < playlist.length) playFromPlaylist(next);
+  if (next < playlist.length) playFromPlaylist(next, true);
 });
 
 var audioRetried = false;
@@ -1346,7 +1357,9 @@ var _volSendTimer = null;
 function volIcon(v) {
   return v <= 0 ? '\uD83D\uDD07' : v < 0.34 ? '\uD83D\uDD08' : v < 0.67 ? '\uD83D\uDD09' : '\uD83D\uDD0A';
 }
+var _vol = 1;     // exact current volume (the slider snaps its value to its step)
 function setVolumeUI(v) {
+  _vol = v;
   volume.value = v;
   volPct.textContent = Math.round(v * 100) + '%';
   btnVol.textContent = volIcon(v);
@@ -1516,19 +1529,21 @@ var vid       = document.getElementById('video');
 var vidMsgEl  = document.getElementById('video-msg');
 var btnVideo  = document.getElementById('btn-video');
 var _vidShown = false, _vidTrackId = null, _vidReq = 0, _ctrlTimer = null;
-var _srv      = { pos: 0, playing: false, at: 0 };   // last party clock received from the server
+var _srv      = { pos: 0, playing: false, at: 0, speed: 1, dur: 0 };   // last party clock received from the server
+var _seekHoldUntil = 0;   // right after a local seek, ignore the (older) position the server may still send
 
 function setVidMsg(t) { vidMsgEl.textContent = t || ''; }
 function clearVideoEl() { vid.pause(); vid.removeAttribute('src'); vid.load(); }
 
 function videoClock() {
-  if (PARTY) return { t: _srv.pos + (_srv.playing ? (Date.now() - _srv.at) / 1000 : 0), playing: _srv.playing };
+  if (PARTY) return { t: _srv.pos + (_srv.playing ? (Date.now() - _srv.at) / 1000 * (_srv.speed || 1) : 0), playing: _srv.playing };
   return { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended && audio.readyState >= 3 };
 }
 // How to react to the gap between the video and the master clock (seconds, + = video is ahead)
-function videoDriftAction(drift) {
+function videoSpeed() { return PARTY ? (_srv.speed || 1) : (audio.playbackRate || 1); }
+function videoDriftAction(drift, seekAt) {
   var a = Math.abs(drift);
-  if (a > 0.8)  return 'seek';
+  if (a > (seekAt || 0.8))  return 'seek';
   if (a > 0.15) return drift > 0 ? 'slower' : 'faster';   // small gap: nudge the speed, no visible jump
   return 'ok';
 }
@@ -1539,12 +1554,13 @@ function syncVideo() {
   if (!c.playing) {
     if (!vid.paused) vid.pause();
     if (Math.abs(vid.currentTime - t) > 0.3) vid.currentTime = t;
-    vid.playbackRate = 1;
+    vid.playbackRate = videoSpeed();
     return;
   }
-  var act = videoDriftAction(vid.currentTime - t);
-  if (act === 'seek') { vid.currentTime = t; vid.playbackRate = 1; }
-  else vid.playbackRate = act === 'faster' ? 1.05 : act === 'slower' ? 0.95 : 1;
+  var base = videoSpeed();            // x2 while the user holds the video: the picture follows the music's speed
+  var act = videoDriftAction(vid.currentTime - t, base > 1 ? 3 : 0.8);   // at x2 a slow device would seek again and again: be patient
+  if (act === 'seek') { vid.currentTime = t; vid.playbackRate = base; }
+  else vid.playbackRate = base * (act === 'faster' ? 1.05 : act === 'slower' ? 0.95 : 1);
   if (vid.paused) { var pr = vid.play(); if (pr && pr.catch) pr.catch(function() {}); }
 }
 
@@ -1645,7 +1661,7 @@ sizeBtn.addEventListener('click', function(e) { e.stopPropagation(); setMini(!_v
 stage.addEventListener('click', function(e) { if (_vidMini && !e.target.closest('#video-ctrl')) setMini(false); });   // tap the small player = enlarge
 document.getElementById('video-fs').addEventListener('click', function(e) { e.stopPropagation(); toggleFullscreen(); });
 document.getElementById('video-close').addEventListener('click', function(e) { e.stopPropagation(); showVideo(false); });
-stage.addEventListener('dblclick', toggleFullscreen);
+stage.addEventListener('dblclick', function() { if (Date.now() - _lastTouchAt > 700) toggleFullscreen(); });   // (a touch double-tap seeks instead)
 ['mousemove', 'touchstart', 'click'].forEach(function(ev) { stage.addEventListener(ev, pokeVideoCtrl, { passive: true }); });
 document.addEventListener('keydown', function(e) {
   if (!VIDEO || (e.key !== 'f' && e.key !== 'F') || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -1653,6 +1669,139 @@ document.addEventListener('keydown', function(e) {
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;     // typing a search / a PIN
   e.preventDefault();
   toggleFullscreen();
+});
+
+// A track the USER launches opens the video (big) if it is hidden. A small player stays small and
+// a big one stays big: only the video changes. Automatic changes of track never open anything.
+function userOpensVideo(track) {
+  if (!VIDEO || !track) return;
+  if (_vidShown) { videoTrackChanged(track.id); return; }
+  _vidTrackId = track.id;       // so that opening loads the NEW track, not the previous one
+  showVideo(true);
+}
+
+// ── Keyboard + touch controls for the playback ──
+//   Left / Right : -10 s / +10 s          Up / Down : volume +5 % / -5 %  (while the big video is up)
+//   double-tap left / right half of the video : -10 s / +10 s
+//   hold 1 s on the video : x2 until release (mouse or finger)
+var SEEK_STEP = 10, VOL_STEP = 0.05, HOLD_MS = 1000;
+var _seekAcc = null, _seekTimer = null;
+var _lastTouchAt = 0, _lastTap = { t: 0, side: '' };
+var _holdTimer = null, _holdFired = false, _fastOn = false, _fastBeat = null, _holdX = 0, _holdY = 0, _hintTimer = null;
+var hintEl = document.getElementById('video-hint');
+
+function gestureOK() { return VIDEO && _vidShown && !_vidMini; }     // not in the small player (a tap there enlarges it)
+function showHint(text, side) {
+  if (gestureOK()) {
+    hintEl.textContent = text; hintEl.className = 'show ' + (side || '');
+    clearTimeout(_hintTimer); _hintTimer = setTimeout(function() { hintEl.className = ''; }, 700);
+  } else toast(text);
+}
+function hasTrack() { return PARTY ? _srv.dur > 0 : !!audio.getAttribute('src'); }
+
+function seekBy(delta) {
+  if (!hasTrack() || guestBlocked()) return;
+  if (PARTY) {
+    var dur = _srv.dur || Infinity, base = _seekAcc != null ? _seekAcc : videoClock().t;
+    var t = Math.max(0, Math.min(dur - 0.5, base + delta));
+    _seekAcc = t; _srv.pos = t; _srv.at = Date.now(); _seekHoldUntil = Date.now() + 900;
+    syncVideo();                                   // the picture follows at once; the server is told once the key bursts settle
+    clearTimeout(_seekTimer);
+    _seekTimer = setTimeout(function() {
+      var pos = _seekAcc; _seekAcc = null;
+      fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ cmd: 'seek', position: pos }) }).catch(function() {});
+    }, 150);
+  } else {
+    var d = isFinite(audio.duration) ? audio.duration : Infinity;
+    audio.currentTime = Math.max(0, Math.min(d - 0.5, audio.currentTime + delta));   // the video follows on 'seeked'
+  }
+  showHint((delta > 0 ? '+' : '\u2212') + Math.abs(delta) + ' s', delta > 0 ? 'right' : 'left');
+}
+function volumeBy(delta) {
+  if (guestBlocked()) return;
+  var v = Math.max(0, Math.min(1, Math.round((_vol + delta) * 100) / 100));
+  applyVolume(v);
+  showHint('Volume ' + Math.round(v * 100) + ' %', '');
+}
+
+document.addEventListener('keydown', function(e) {
+  var k = e.key;
+  if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'ArrowUp' && k !== 'ArrowDown') return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  var el = document.activeElement, tag = el && el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable)) return;  // typing, or a slider that uses the arrows itself
+  if (ctxOverlay.classList.contains('open')) return;
+  if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); seekBy(k === 'ArrowRight' ? SEEK_STEP : -SEEK_STEP); return; }
+  if (gestureOK()) { e.preventDefault(); volumeBy(k === 'ArrowUp' ? VOL_STEP : -VOL_STEP); }   // otherwise Up / Down keep scrolling the page
+});
+
+// x2 while holding
+function sendSpeed(v) {
+  fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ cmd: 'speed', value: v }) }).catch(function() {});
+}
+function setSpeed(v) {
+  if (PARTY) {
+    var t = videoClock().t; _srv.pos = t; _srv.at = Date.now(); _srv.speed = v;     // re-anchor the clock before the rate changes
+    sendSpeed(v);
+  } else audio.playbackRate = v;
+  syncVideo();
+}
+function startFast() {
+  if (_fastOn || !hasTrack() || guestBlocked()) return;
+  _fastOn = true; _holdFired = true;
+  stage.classList.add('fast');
+  setSpeed(2);
+  if (PARTY) _fastBeat = setInterval(function() { sendSpeed(2); }, 5000);          // keeps the server's lease alive
+}
+function stopFast() {
+  if (!_fastOn) return;
+  _fastOn = false; clearInterval(_fastBeat);
+  stage.classList.remove('fast');
+  setSpeed(1);
+}
+function startHold(x, y) {
+  cancelHold(); _holdFired = false;
+  if (!gestureOK()) return;
+  _holdX = x; _holdY = y;
+  _holdTimer = setTimeout(function() { _holdTimer = null; if (gestureOK()) startFast(); }, HOLD_MS);
+}
+function cancelHold() { if (_holdTimer) { clearTimeout(_holdTimer); _holdTimer = null; } }
+function endHold() { cancelHold(); stopFast(); setTimeout(function() { _holdFired = false; }, 400); }
+
+stage.addEventListener('mousedown', function(e) {
+  if (e.button === 0 && Date.now() - _lastTouchAt > 700 && !e.target.closest('#video-ctrl')) startHold(e.clientX, e.clientY);
+});
+window.addEventListener('mouseup', endHold);
+stage.addEventListener('mouseleave', endHold);
+window.addEventListener('blur', endHold);
+document.addEventListener('visibilitychange', function() { if (document.hidden) endHold(); });
+
+stage.addEventListener('touchstart', function(e) {
+  _lastTouchAt = Date.now();
+  if (e.touches.length !== 1) { cancelHold(); return; }
+  if (!e.target.closest('#video-ctrl')) startHold(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+stage.addEventListener('touchmove', function(e) {
+  var t = e.touches[0];
+  if (_holdTimer && (Math.abs(t.clientX - _holdX) > 12 || Math.abs(t.clientY - _holdY) > 12)) cancelHold();
+}, { passive: true });
+stage.addEventListener('touchcancel', endHold);
+stage.addEventListener('touchend', function(e) {
+  _lastTouchAt = Date.now();
+  var wasHold = _holdFired;
+  endHold();
+  if (wasHold) { e.preventDefault(); return; }                       // releasing a hold is not a tap
+  if (!gestureOK() || e.target.closest('#video-ctrl')) return;
+  var t = e.changedTouches[0], r = stage.getBoundingClientRect(), now = Date.now();
+  var side = (t.clientX - r.left) < r.width / 2 ? 'left' : 'right';
+  if (now - _lastTap.t < 320 && _lastTap.side === side) {            // 2nd tap (and any further quick tap) = another jump
+    e.preventDefault();
+    seekBy(side === 'right' ? SEEK_STEP : -SEEK_STEP);
+  }
+  _lastTap = { t: now, side: side };
+}, { passive: false });
+stage.addEventListener('contextmenu', function(e) {                  // long-press on a phone would open the browser's menu
+  if (_fastOn || Date.now() - _lastTouchAt < 1500) e.preventDefault();
 });
 
 // ── Drawer ──
@@ -1724,7 +1873,10 @@ var _plRev = null;
 function applyPartyState(state) {
   // Volume (don't fight the slider while the user is dragging it)
   if (state.volume != null && Date.now() - _volTouchedAt > 1500) setVolumeUI(state.volume / 100);
-  _srv.pos = state.position || 0; _srv.playing = !!state.is_playing && !state.loading; _srv.at = Date.now();
+  if (Date.now() >= _seekHoldUntil) { _srv.pos = state.position || 0; _srv.at = Date.now(); }
+  _srv.playing = !!state.is_playing && !state.loading;
+  _srv.speed = state.speed || 1; _srv.dur = state.duration || 0;
+  if (_srv.at === 0) _srv.at = Date.now();
   if (VIDEO) {
     var cur = state.queue && state.queue[state.current_idx];
     videoTrackChanged(cur ? cur.id : null);
@@ -1783,6 +1935,7 @@ function partyPlayFromSearch(idx) {
   var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
   if (activeCard) activeCard.classList.add('playing');
   loadingBar.style.display = 'block';
+  userOpensVideo(makeItem(v));
   sendCmd({ cmd: 'play', track: makeItem(v) });
 }
 
@@ -1795,6 +1948,7 @@ function partyAddToQueue(v, where) {
 
 function partyPlayFromPlaylist(idx) {
   if (guestBlocked()) return;
+  if (playlist[idx]) userOpensVideo(playlist[idx]);
   sendCmd({ cmd: 'play_idx', idx: idx });
 }
 
