@@ -746,10 +746,11 @@ if PARTY_MODE:
             if not track:
                 return jsonify({"error": "Missing track"}), 400
             with party_lock:
-                party_state["queue"].insert(0, track)
-                if party_state["current_idx"] >= 0:
-                    party_state["current_idx"] += 1
-            threading.Thread(target=play_track, args=(0,), daemon=True).start()
+                # "Play now": the track goes right after the current one, and plays immediately
+                ins = party_state["current_idx"] + 1 if party_state["current_idx"] >= 0 else 0
+                ins = min(ins, len(party_state["queue"]))
+                party_state["queue"].insert(ins, track)
+            threading.Thread(target=play_track, args=(ins,), daemon=True).start()
 
         elif cmd == "add_next":
             track = data.get("track")

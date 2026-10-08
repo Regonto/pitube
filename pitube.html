@@ -993,10 +993,11 @@ function playTrackNow(t) {
     sendCmd({ cmd: 'play', track: makeItem(t) });
   } else {
     userOpensVideo(makeItem(t));
-    playlist.splice(0, 0, makeItem(t));
-    plCurrentIdx = 0;
+    var at = plCurrentIdx >= 0 ? plCurrentIdx + 1 : 0;       // right after the current track
+    playlist.splice(at, 0, makeItem(t));
+    plCurrentIdx = at;
     updatePlCount(); renderPlaylist();
-    startAudio(playlist[0]);
+    startAudio(playlist[at]);
   }
   document.querySelector('[data-tab="queue"]').click();
 }
@@ -1100,19 +1101,19 @@ function playFromSearch(idx) {
   var v = results[idx];
   var item = makeItem(v);
   userOpensVideo(item);
-  if (plCurrentIdx === 0 && playlist.length > 0 && playlist[0].id === item.id) {
-    // already at head
+  var at = plCurrentIdx >= 0 ? plCurrentIdx + 1 : 0;       // right after the current track
+  if (plCurrentIdx >= 0 && playlist[plCurrentIdx] && playlist[plCurrentIdx].id === item.id) {
+    at = plCurrentIdx;                                       // already the current one: just restart it
   } else {
-    playlist.splice(0, 0, item);
-    if (plCurrentIdx >= 0) plCurrentIdx++;
+    playlist.splice(at, 0, item);
     updatePlCount();
   }
-  plCurrentIdx = 0;
+  plCurrentIdx = at;
   document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('playing'); });
   var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
   if (activeCard) activeCard.classList.add('playing');
   renderPlaylist();
-  startAudio(playlist[0]);
+  startAudio(playlist[at]);
 }
 
 function playFromPlaylist(idx, auto) {      // auto = the previous track just ended (not a choice of the user)
@@ -1802,6 +1803,18 @@ stage.addEventListener('touchend', function(e) {
 }, { passive: false });
 stage.addEventListener('contextmenu', function(e) {                  // long-press on a phone would open the browser's menu
   if (_fastOn || Date.now() - _lastTouchAt < 1500) e.preventDefault();
+});
+
+// Escape: closes the right-hand panel if it is open, otherwise hides the video.
+// (Fullscreen: the browser itself leaves fullscreen on Escape and the page keeps the normal view.)
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (fsElement()) return;
+  if (ctxOverlay.classList.contains('open')) { closeCtxMenu(); return; }
+  var tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;           // Escape belongs to the field (PIN, search...)
+  if (drawer.classList.contains('open')) { closeSavePicker(); closeDrawer(); e.preventDefault(); return; }
+  if (VIDEO && _vidShown) { showVideo(false); e.preventDefault(); }
 });
 
 // ── Drawer ──

@@ -60,7 +60,10 @@ python3 server.py --party --video
 | Volume +5 % / -5 % | Up / Down arrow (while the big video is up) | |
 | x2 speed | | hold 1 s on the video (mouse or finger), until you let go |
 | Fullscreen | F | button, or double-click |
+| Close panel / video | Esc | |
 
+- Esc closes the right-hand panel if it is open, otherwise hides the video (in fullscreen it just leaves fullscreen).
+- "Play now" puts the track right after the current one and starts it.
 - Left / Right work anywhere (except while typing in a field); Up / Down only while the big video is up, otherwise they keep scrolling the page.
 - Launching a track opens the video (big) if it is hidden. If the small player is up it stays small and only its video changes. Automatic changes of track never open anything.
 - In party mode the x2 speed is applied to mpv, and falls back to x1 by itself if the device that asked for it disappears.
