@@ -1667,7 +1667,6 @@ function submitPartyModal() {
       if (x.status === 200 || x.d.error === 'already_on' || x.d.error === 'already_off') { location.reload(); return; }
       if (x.d.error === 'bad_pin') { toast('Wrong PIN'); pmPin.value = ''; pmPin.focus(); }
       else if (x.status === 429) { toast('Too many attempts, try again in ' + (x.d.retry_in || 60) + ' s'); pmPin.value = ''; }
-      else if (x.d.error === 'locked') toast('Party locked: only the master can stop it');
       else toast('Could not ' + (stopping ? 'stop' : 'start') + ' the party');
     })
     .catch(function() { _pmBusy = false; pmGo.disabled = false; toast('Server unreachable'); });

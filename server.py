@@ -1030,8 +1030,6 @@ if True:
                 err = _check_pin(b)                  # the code replaces the master check
                 if err:
                     return err
-            elif party_state["locked"] and not _is_master():
-                return jsonify({"error": "locked"}), 403
             with party_lock:
                 party_on["v"] = False
                 play_gen["n"] += 1                   # cancels any load in progress

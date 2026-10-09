@@ -31,7 +31,7 @@ Open `http://<pi-ip>:5000` from any device on the network.
 #### Starting and stopping the party live
 The party does not need a restart: click the **PiTube logo** in the header.
 - **Normal mode**: the logo is greyed out. Clicking it opens a window offering an optional 4-digit PIN and a **Launch!** button (or the cross to cancel).
-- **Party mode**: the logo is in colour and the header shows a **PARTY 🎉** label. Clicking the logo opens a window to **Stop** the party (it asks for the PIN if one was set; if the party is locked and has no PIN, only the master can stop it).
+- **Party mode**: the logo is in colour and the header shows a **PARTY 🎉** label. Clicking the logo opens a window to **Stop** the party (it asks for the PIN if one was set; without a PIN, anyone can stop it, just like anyone can start it, even while the party is locked).
 - Starting the party starts with an empty queue. Stopping it stops the music, clears the queue and unlocks the party.
 - Every other device notices the change within a few seconds and reloads itself in the right mode (so audio playing in a browser in normal mode is interrupted).
 - The PIN chosen when starting is the one used to lock / unlock / stop the party (see *Party lock*). Starting with `python3 server.py --party -pin 1234` does the same thing.
