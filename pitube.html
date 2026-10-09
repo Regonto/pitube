@@ -1946,6 +1946,7 @@ function sendCmd(obj) {
 
 var _lastQueueSig = null;
 var _plRev = null;
+var _firstSeen = false;
 var _openSeq = null;   // last open_seq seen (first state only sets the baseline: no video at page load)
 var IS_LOCAL = /[?&]tv\b/.test(location.search);   // the Pi's own screen (set by /mode, or open /?tv)
 
@@ -1958,10 +1959,13 @@ function applyPartyState(state) {
   if (_srv.at === 0) _srv.at = Date.now();
   if (VIDEO) {
     var cur = state.queue && state.queue[state.current_idx];
-    // Someone started a track by hand (any device): the Pi's own screen opens the video too.
+    // Page opened mid-track: show its video (works even with an older server without open_seq).
+    var first = (_openSeq === null && !_firstSeen);
+    _firstSeen = true;
+    if (first && cur && !_vidShown) userOpensVideo(cur);
+    // Someone started a track by hand: the Pi's own screen opens the video too.
     if (state.open_seq !== undefined) {
-      if (_openSeq === null) { if (cur && !_vidShown) userOpensVideo(cur); }   // page opened mid-track: show its video
-      else if (state.open_seq !== _openSeq && IS_LOCAL && cur) userOpensVideo(cur);
+      if (_openSeq !== null && state.open_seq !== _openSeq && IS_LOCAL && cur) userOpensVideo(cur);
       _openSeq = state.open_seq;
     }
     videoTrackChanged(cur ? cur.id : null);
