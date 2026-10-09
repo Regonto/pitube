@@ -109,3 +109,11 @@ Le Pi est reconnu s'il se connecte via `localhost` / son IP ; sinon ouvrez la pa
 ### Thème clair / sombre
 Bouton soleil / lune en haut à droite du header (masqué quand le volet latéral est ouvert). Le choix est mémorisé dans le navigateur ;
 au premier chargement, le thème suit le réglage du système (clair ou sombre). Les couleurs sont des variables CSS (`:root` et `:root[data-theme="light"]`).
+
+### Sécurité
+- Pas de base SQL (playlists dans `playlists.json`) : aucune injection SQL possible. Le seul « moteur » reçoit la recherche sous la forme `ytsearchN:<texte>` (yt-dlp), jamais en ligne de commande shell.
+- Aucune commande shell construite à partir d'une entrée : mpv est lancé avec une liste d'arguments, l'URL vient de yt-dlp (jamais du client).
+- Toute piste reçue d'un client (queue, playlists) est filtrée côté serveur : id YouTube valide, textes tronqués, miniature forcée vers `ytimg.com`.
+- Côté page, tout texte venant du réseau (titres, chaînes, noms de playlists) est échappé avant affichage (anti-XSS).
+- Pas de CORS (une autre page web ne peut pas piloter la Party), en-têtes `Content-Security-Policy`, `X-Frame-Options`, `nosniff`.
+- Le serveur Flask de développement est prévu pour un réseau local de confiance : ne l'exposez pas tel quel sur Internet (utilisez un reverse proxy HTTPS + authentification).

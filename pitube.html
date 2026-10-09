@@ -688,6 +688,13 @@ function fmtViews(n) {
   if (n >= 1e3) return (n/1e3).toFixed(0) + 'k views';
   return n + ' views';
 }
+// Everything that comes from the network (titles, channels, playlist names...) is untrusted:
+// it is escaped before going into innerHTML.
+function esc(x) {
+  return String(x == null ? '' : x).replace(/[&<>"'`]/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c];
+  });
+}
 function initials(name) { return (name || '?').charAt(0).toUpperCase(); }
 function makeItem(v) { return { id: v.id, title: v.title, channel: v.channel, thumbnail: v.thumbnail, duration: v.duration }; }
 
@@ -757,7 +764,7 @@ function runSearch() {
     .then(function(r) { return r.json(); })
     .then(function(data) { results = data.results || []; renderGrid(); })
     .catch(function(err) {
-      stateMsg.innerHTML = '<p style="color:var(--danger-text)">Error: could not reach the server.<br><small>' + err.message + '</small></p>';
+      stateMsg.innerHTML = '<p style="color:var(--danger-text)">Error: could not reach the server.<br><small>' + esc(err.message) + '</small></p>';
     });
 }
 
@@ -786,8 +793,8 @@ function renderGrid() {
     card.style.position = 'relative';
     card.innerHTML =
       '<div class="thumb-wrap">' +
-        '<img class="thumb" src="' + v.thumbnail + '" alt="' + v.title + '" loading="lazy">' +
-        (v.duration ? '<span class="duration-badge">' + fmtTime(v.duration) + '</span>' : '') +
+        '<img class="thumb" src="' + esc(v.thumbnail) + '" alt="' + esc(v.title) + '" loading="lazy">' +
+        (v.duration ? '<span class="duration-badge">' + esc(fmtTime(v.duration)) + '</span>' : '') +
         '<div class="play-overlay">' +
           '<svg width="84" height="84" viewBox="0 0 48 48">' +
             '<circle cx="24" cy="24" r="24" fill="rgba(0,0,0,.6)"/>' +
@@ -801,10 +808,10 @@ function renderGrid() {
         '</div>' +
       '</div>' +
       '<div class="card-info">' +
-        '<div class="card-ch-avatar">' + initials(v.channel) + '</div>' +
+        '<div class="card-ch-avatar">' + esc(initials(v.channel)) + '</div>' +
         '<div class="card-text">' +
-          '<div class="card-title">' + v.title + '</div>' +
-          '<div class="card-meta">' + v.channel + (v.views ? ' &middot; ' + fmtViews(v.views) : '') + '</div>' +
+          '<div class="card-title">' + esc(v.title) + '</div>' +
+          '<div class="card-meta">' + esc(v.channel) + (v.views ? ' &middot; ' + esc(fmtViews(v.views)) : '') + '</div>' +
         '</div>' +
       '</div>';
 
@@ -850,10 +857,10 @@ function renderPlaylist() {
     el.innerHTML =
       '<span class="pl-drag" title="Drag to reorder">&#10783;</span>' +
       '<span class="pl-rank">' + rankLabel + '</span>' +
-      '<img class="pl-thumb" src="' + item.thumbnail + '" alt="">' +
+      '<img class="pl-thumb" src="' + esc(item.thumbnail) + '" alt="">' +
       '<div class="pl-meta">' +
-        '<div class="pl-title">' + item.title + '</div>' +
-        '<div class="pl-channel">' + item.channel + (item.duration ? ' &middot; ' + fmtTime(item.duration) : '') + '</div>' +
+        '<div class="pl-title">' + esc(item.title) + '</div>' +
+        '<div class="pl-channel">' + esc(item.channel) + (item.duration ? ' &middot; ' + esc(fmtTime(item.duration)) : '') + '</div>' +
       '</div>' +
       '<div class="pl-btns">' +
         '<button class="pl-btn" data-action="up" title="Move up">&#8593;</button>' +
@@ -921,29 +928,29 @@ function renderSaved() {
     row.innerHTML =
       '<div class="spl-row-header">' +
         '<span class="spl-icon">&#9654;</span>' +
-        '<span class="spl-name">' + name + '</span>' +
+        '<span class="spl-name">' + esc(name) + '</span>' +
         '<span class="spl-count">' + tracks.length + ' track' + (tracks.length !== 1 ? 's' : '') + '</span>' +
         '<div class="spl-row-actions">' +
-          '<button class="spl-btn del" data-name="' + name + '">Delete</button>' +
+          '<button class="spl-btn del" data-name="' + esc(name) + '">Delete</button>' +
         '</div>' +
       '</div>' +
       '<div class="spl-content">' +
         '<div class="spl-play-btns">' +
-          '<button class="btn-spl-play" data-name="' + name + '">&#9654; Play</button>' +
-          '<button class="btn-spl-queue" data-name="' + name + '">+ Add to Queue</button>' +
+          '<button class="btn-spl-play" data-name="' + esc(name) + '">&#9654; Play</button>' +
+          '<button class="btn-spl-queue" data-name="' + esc(name) + '">+ Add to Queue</button>' +
         '</div>' +
         '<ul class="spl-tracks">' +
           tracks.map(function(t, ti) {
-            return '<li class="spl-track" data-pl="' + name + '" data-idx="' + ti + '">' +
-              '<img class="spl-track-thumb" src="' + t.thumbnail + '" alt="">' +
-              '<span class="spl-track-title">' + t.title + '</span>' +
+            return '<li class="spl-track" data-pl="' + esc(name) + '" data-idx="' + ti + '">' +
+              '<img class="spl-track-thumb" src="' + esc(t.thumbnail) + '" alt="">' +
+              '<span class="spl-track-title">' + esc(t.title) + '</span>' +
               '<div class="spl-track-actions">' +
                 '<button class="spl-track-btn t-play" title="Play now">&#9654;</button>' +
                 '<button class="spl-track-btn t-next" title="Play next">+1</button>' +
                 '<button class="spl-track-btn t-queue" title="Add to queue">+ Q</button>' +
               '</div>' +
               '<button class="spl-track-more" title="More actions">&#8943;</button>' +
-              '<button class="spl-track-del" data-pl="' + name + '" data-idx="' + ti + '" title="Remove">&#10005;</button>' +
+              '<button class="spl-track-del" data-pl="' + esc(name) + '" data-idx="' + ti + '" title="Remove">&#10005;</button>' +
             '</li>';
           }).join('') +
         '</ul>' +

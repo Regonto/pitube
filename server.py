@@ -8,7 +8,7 @@ Party + PIN : python3 server.py --party -pin 1234
   -> locking / unlocking the party then requires this 4-digit code
 Video       : add --video to any of the above (python3 server.py --party --video)
   -> a button in the player shows the video (audio still comes from mpv / the browser)
-Requires: pip install -r requirements.txt   (flask flask-cors yt-dlp segno)
+Requires: pip install -r requirements.txt   (flask yt-dlp segno)
 System:   sudo apt install mpv
 """
 
@@ -26,7 +26,6 @@ import threading
 import subprocess
 
 from flask import Flask, jsonify, request, Response, send_from_directory
-from flask_cors import CORS
 import yt_dlp
 
 # ── Mode ─────────────────────────────────────────────────────────────────────
@@ -120,7 +119,53 @@ def _guest_locked():
     return PARTY_MODE and party_state["locked"] and not _is_master()
 
 app = Flask(__name__)
-CORS(app)
+# No CORS on purpose: the page is served by this same server, so no other website may call the API
+# (otherwise any web page opened on a phone of the network could control the party).
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    if resp.mimetype == "text/html":
+        # the page uses inline scripts/styles; the rest is locked down (no framing, no foreign
+        # connections, no plugins, no <base> tricks). Media may come from Google's video servers.
+        resp.headers.setdefault("Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https:; media-src 'self' blob: https:; connect-src 'self'; "
+            "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+    return resp
+
+@app.errorhandler(ValueError)
+@app.errorhandler(TypeError)
+def _bad_input(e):
+    return jsonify({"error": "Bad request"}), 400
+
+_VID_ID_RE = re.compile(r"[A-Za-z0-9_-]{6,20}")
+_THUMB_RE  = re.compile(r"https://[A-Za-z0-9.-]*ytimg\.com/[^\s\"'<>`]*")
+MAX_QUEUE  = 2000
+
+def _clean_track(tr):
+    """Whitelist + type-check a track coming from a client (never trust the browser)."""
+    if not isinstance(tr, dict):
+        return None
+    vid = tr.get("id")
+    if not isinstance(vid, str) or not _VID_ID_RE.fullmatch(vid):
+        return None
+    def txt(k):
+        v = tr.get(k)
+        return v[:300] if isinstance(v, str) else ""
+    th = tr.get("thumbnail")
+    if not (isinstance(th, str) and len(th) < 300 and _THUMB_RE.fullmatch(th)):
+        th = "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg"
+    dur = tr.get("duration")
+    dur = float(dur) if isinstance(dur, (int, float)) and not isinstance(dur, bool) and 0 <= dur < 1e6 else None
+    return {"id": vid, "title": txt("title"), "channel": txt("channel"), "thumbnail": th, "duration": dur}
+
+def _clean_tracks(lst):
+    if not isinstance(lst, list):
+        return []
+    return [t for t in (_clean_track(x) for x in lst[:MAX_QUEUE]) if t]
 
 PLAYLISTS_FILE = os.path.join(os.path.dirname(__file__), "playlists.json")
 
@@ -162,9 +207,13 @@ _PL_TRACK_KEYS = ("id", "title", "channel", "thumbnail", "duration")
 @app.route("/search")
 def search():
     query = request.args.get("q", "").strip()
-    n = min(int(request.args.get("n", 20)), 50)
+    try:
+        n = max(1, min(int(request.args.get("n", 20)), 50))
+    except (TypeError, ValueError):
+        n = 20
     if not query:
         return jsonify({"error": "Missing query"}), 400
+    query = query[:200]
     with yt_dlp.YoutubeDL(YDL_SEARCH_OPTS.copy()) as ydl:
         results = ydl.extract_info("ytsearch" + str(n) + ":" + query, download=False)
     videos = []
@@ -277,8 +326,8 @@ def video_url():
 @app.route("/audio-url")
 def audio_url():
     vid_id = request.args.get("id", "").strip()
-    if not vid_id:
-        return jsonify({"error": "Missing id"}), 400
+    if not _VID_ID_RE.fullmatch(vid_id):
+        return jsonify({"error": "Bad id"}), 400
     url = "https://www.youtube.com/watch?v=" + vid_id
     with _id_lock(vid_id):
         with yt_dlp.YoutubeDL(YDL_AUDIO_OPTS) as ydl:
@@ -328,8 +377,8 @@ def playlists_op():
         elif op == "delete":
             data.pop(name, None)
         elif op == "add_track":
-            tr = b.get("track")
-            if not isinstance(tr, dict) or not isinstance(tr.get("id"), str) or not tr["id"]:
+            tr = _clean_track(b.get("track"))
+            if not tr:
                 return jsonify({"error": "Bad track"}), 400
             if name not in data:
                 return jsonify({"error": "no_such_playlist"}), 404
@@ -362,10 +411,41 @@ def index():
 def assets(filename):
     return send_from_directory(os.path.join(BASE_DIR, "assets"), filename)
 
+def _own_ips():
+    ips = set()
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            ips.add(ip)
+    except Exception:
+        pass
+    try:
+        u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        u.connect(("10.255.255.255", 1))
+        ips.add(u.getsockname()[0])
+        u.close()
+    except Exception:
+        pass
+    try:
+        from urllib.parse import urlparse
+        h = urlparse(PUBLIC_URL if "//" in str(PUBLIC_URL) else "//" + str(PUBLIC_URL)).hostname
+        if h:
+            ips.add(h)
+    except Exception:
+        pass
+    return ips
+
+def _is_local_client():
+    """True when the request comes from the machine running the server (the Pi's own screen)."""
+    ip = request.remote_addr or ""
+    if ip.startswith("127.") or ip in ("::1", "::ffff:127.0.0.1"):
+        return True
+    return ip.replace("::ffff:", "") in _own_ips()
+
 # ── Mode endpoint (so the front knows which mode is active) ───────────────────
 @app.route("/mode")
 def mode():
-    return jsonify({"party": PARTY_MODE, "url": PUBLIC_URL, "pin": bool(PARTY_PIN), "video": VIDEO_MODE})
+    return jsonify({"party": PARTY_MODE, "url": PUBLIC_URL, "pin": bool(PARTY_PIN), "video": VIDEO_MODE,
+                    "local": _is_local_client()})
 
 # ── QR code pointing to the server address (needs: pip install segno) ─────────
 @app.route("/qr.svg")
@@ -398,6 +478,7 @@ if PARTY_MODE:
         "playlists_rev": 0,    # bumped when a saved playlist changes -> clients re-fetch /playlists
         "loading":      False, # a track was chosen and mpv is not playing it yet
         "speed":        1.0,   # playback speed (hold on the video = x2)
+        "open_seq":     0,     # bumped when someone starts a track by hand -> the Pi screen opens the video
     }
     party_master = {"id": None}   # never broadcast: it would let anyone impersonate the master
 
@@ -506,7 +587,7 @@ if PARTY_MODE:
             except Exception:
                 mpv_proc.kill()
 
-    def play_track(idx):
+    def play_track(idx, user=False):
         global mpv_proc
         with party_lock:
             if idx < 0 or idx >= len(party_state["queue"]):
@@ -518,6 +599,8 @@ if PARTY_MODE:
             party_state["is_playing"]  = True
             party_state["position"]    = 0.0
             party_state["loading"]     = True
+            if user:
+                party_state["open_seq"] += 1
             party_state["speed"]       = 1.0           # a new track always starts at normal speed
             mpv_state["ready"]         = False
             mpv_state["pending_seek"]  = None
@@ -705,7 +788,9 @@ if PARTY_MODE:
     # ── Command endpoint ───────────────────────────────────────────────────────
     @app.route("/command", methods=["POST"])
     def command():
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "Bad request"}), 400
         cmd  = data.get("cmd")
 
         # ── party lock ──
@@ -742,7 +827,7 @@ if PARTY_MODE:
             return jsonify({"error": "locked"}), 403
 
         if cmd == "play":
-            track = data.get("track")
+            track = _clean_track(data.get("track"))
             if not track:
                 return jsonify({"error": "Missing track"}), 400
             with party_lock:
@@ -750,35 +835,41 @@ if PARTY_MODE:
                 ins = party_state["current_idx"] + 1 if party_state["current_idx"] >= 0 else 0
                 ins = min(ins, len(party_state["queue"]))
                 party_state["queue"].insert(ins, track)
-            threading.Thread(target=play_track, args=(ins,), daemon=True).start()
+            threading.Thread(target=play_track, args=(ins,), kwargs={"user": True}, daemon=True).start()
 
         elif cmd == "add_next":
-            track = data.get("track")
+            track = _clean_track(data.get("track"))
+            if not track:
+                return jsonify({"error": "Bad track"}), 400
             with party_lock:
                 ins = party_state["current_idx"] + 1 if party_state["current_idx"] >= 0 else len(party_state["queue"])
                 party_state["queue"].insert(ins, track)
             broadcast(state_snapshot())
 
         elif cmd == "add_end":
-            track = data.get("track")
+            track = _clean_track(data.get("track"))
+            if not track:
+                return jsonify({"error": "Bad track"}), 400
             with party_lock:
+                if len(party_state["queue"]) >= MAX_QUEUE:
+                    return jsonify({"error": "Queue is full"}), 400
                 party_state["queue"].append(track)
             broadcast(state_snapshot())
 
         elif cmd == "play_list":
             # Replace the whole queue with these tracks and start from the first one
-            tracks = data.get("tracks") or []
+            tracks = _clean_tracks(data.get("tracks"))
             if not tracks:
                 return jsonify({"error": "Missing tracks"}), 400
             with party_lock:
                 party_state["queue"] = list(tracks)
                 party_state["current_idx"] = -1
-            threading.Thread(target=play_track, args=(0,), daemon=True).start()
+            threading.Thread(target=play_track, args=(0,), kwargs={"user": True}, daemon=True).start()
 
         elif cmd == "add_many":
-            tracks = data.get("tracks") or []
+            tracks = _clean_tracks(data.get("tracks"))
             with party_lock:
-                party_state["queue"].extend(tracks)
+                party_state["queue"].extend(tracks[:max(0, MAX_QUEUE - len(party_state["queue"]))])
             broadcast(state_snapshot())
 
         elif cmd == "volume":
@@ -817,7 +908,7 @@ if PARTY_MODE:
                     # If mpv isn't ready yet this is lost, and _settle applies it once it is.
                     mpv_send(["set_property", "pause", not party_state["is_playing"]])
             if start_idx is not None:
-                threading.Thread(target=play_track, args=(start_idx,), daemon=True).start()
+                threading.Thread(target=play_track, args=(start_idx,), kwargs={"user": True}, daemon=True).start()
             else:
                 broadcast(state_snapshot())
 
@@ -833,6 +924,8 @@ if PARTY_MODE:
 
         elif cmd == "seek":
             pos = max(0.0, float(data.get("position", 0)))
+            if pos != pos or pos > 1e7:             # NaN / absurd values
+                return jsonify({"error": "Bad position"}), 400
             with party_lock:
                 party_state["position"] = pos
                 if mpv_state["ready"]:
@@ -843,7 +936,7 @@ if PARTY_MODE:
 
         elif cmd == "play_idx":
             idx = int(data.get("idx", 0))
-            threading.Thread(target=play_track, args=(idx,), daemon=True).start()
+            threading.Thread(target=play_track, args=(idx,), kwargs={"user": True}, daemon=True).start()
 
         elif cmd == "remove":
             idx = int(data.get("idx", 0))
