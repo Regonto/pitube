@@ -38,8 +38,7 @@ The party does not need a restart: click the **PARTY label** next to the PiTube 
 - The PiTube logo itself is never greyed out; in party mode a long-click (or right-click) on it shows / hides the QR code.
 
 ### QR code
-In party mode only, a QR code pointing to the server address is shown on the left of the results.
-Long-click (or right-click) the logo to hide / show it. On narrow screens it opens as a pop-up instead.
+In party mode only. On very wide screens (1560 px and more) the QR code is shown by default, floating in the empty left margin under the header: it takes no room, so nothing moves when it appears. Below that width it would cover the results, so it is hidden by default, like on a phone: **long-click** (or **right-click**) the logo to show it as a pop-up (click outside it, or the cross, to close it). On wide screens the same gesture hides / shows it.
 
 The address defaults to `192.168.1.42:5000`. Change it with:
 ```bash
