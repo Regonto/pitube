@@ -305,12 +305,11 @@
   .ctx-btn.danger { color: var(--danger-text); }
 
   /* ── Party mode badge ── */
-  #party-badge { display:none; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
-  #party-badge.on { display:inline-flex; align-items:center; gap:4px; }
+  #party-badge { display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; transition: filter .25s, opacity .25s; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+  #party-badge.off { filter: grayscale(1); opacity: .5; }
+  #party-badge:not(.on) .tada { display:none; }
   #party-badge .tada { display:block; flex-shrink:0; }
-  /* logo: greyed out while the party is off; click = start / stop the party */
-  #logo-img { cursor: pointer; transition: filter .25s, opacity .25s; }
-  #logo-img.off { filter: grayscale(1); opacity: .5; }
+  /* PARTY label: greyed out while the party is off; click = start / stop the party */
   #party-modal { display: none; position: fixed; inset: 0; z-index: 450; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; }
   #party-modal.open { display: flex; }
   .pm-card { position: relative; width: 340px; max-width: 100%; background: var(--popover); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 22px 20px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.45); text-align: center; }
@@ -474,9 +473,9 @@
 <header>
   <div class="hdr-side hdr-left">
   <a class="logo" href="#">
-    <img id="logo-img" class="off" src="assets/logo.png" alt="PiTube" title="Start the party" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
-  <span id="party-badge"><span id="party-badge-text">PARTY</span><svg class="tada" viewBox="0 0 36 36" width="14" height="14" aria-hidden="true"><path d="M3.5 32.5 11 11.5l13.5 13.5z" fill="#FFB02E"/><path d="M11 11.5l-3.2 9 7.7 7.7 9-3.2z" fill="#F4900C" opacity=".55"/><circle cx="25" cy="7" r="2.3" fill="#2962ff"/><circle cx="31" cy="15" r="2" fill="#E91E63"/><rect x="21" y="3" width="3.6" height="3.6" rx=".8" fill="#FFD43B" transform="rotate(25 22.8 4.8)"/><rect x="29" y="21" width="3.6" height="3.6" rx=".8" fill="#4CAF50" transform="rotate(-20 30.8 22.8)"/><path d="M16 9c0-3 3-4.5 4.5-2.2M27 12.5c3-1 5 .8 4.2 3" fill="none" stroke="#E91E63" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+  <span id="party-badge" class="off" role="button" tabindex="0" title="Start the party"><span id="party-badge-text">PARTY</span><svg class="tada" viewBox="0 0 36 36" width="14" height="14" aria-hidden="true"><path d="M3.5 32.5 11 11.5l13.5 13.5z" fill="#FFB02E"/><path d="M11 11.5l-3.2 9 7.7 7.7 9-3.2z" fill="#F4900C" opacity=".55"/><circle cx="25" cy="7" r="2.3" fill="#2962ff"/><circle cx="31" cy="15" r="2" fill="#E91E63"/><rect x="21" y="3" width="3.6" height="3.6" rx=".8" fill="#FFD43B" transform="rotate(25 22.8 4.8)"/><rect x="29" y="21" width="3.6" height="3.6" rx=".8" fill="#4CAF50" transform="rotate(-20 30.8 22.8)"/><path d="M16 9c0-3 3-4.5 4.5-2.2M27 12.5c3-1 5 .8 4.2 3" fill="none" stroke="#E91E63" stroke-width="1.6" stroke-linecap="round"/></svg></span>
   </div>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
     <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
@@ -1676,11 +1675,9 @@ pmPin.addEventListener('input', function() { pmPin.value = pmPin.value.replace(/
 pmPin.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitPartyModal(); });
 document.getElementById('pm-x').addEventListener('click', closePartyModal);
 pmEl.addEventListener('click', function(e) { if (e.target === pmEl) closePartyModal(); });
-_logoLink.addEventListener('click', function(e) {
-  e.preventDefault();
-  if (lpRecent()) return;                       // a long-press shows / hides the QR code instead
-  openPartyModal();
-});
+var _badge = document.getElementById('party-badge');
+_badge.addEventListener('click', openPartyModal);
+_badge.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPartyModal(); } });
 
 // Another device started / stopped the party: follow it (the page reloads in the right mode)
 setInterval(function() {
@@ -2214,8 +2211,8 @@ fetch(API + '/mode')
     if (VIDEO) btnVideo.style.display = 'flex';
     if (data.party) {
       document.getElementById('logo-img').src = 'assets/logo_party.png';
-      document.getElementById('logo-img').classList.remove('off');
-      document.getElementById('logo-img').title = 'Stop the party (long-click: QR code)';
+      document.getElementById('party-badge').classList.remove('off');
+      document.getElementById('party-badge').title = 'Stop the party';
       initParty();
       activatePartyControls();
     }

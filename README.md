@@ -29,13 +29,13 @@ python3 server.py --party
 Open `http://<pi-ip>:5000` from any device on the network.
 
 #### Starting and stopping the party live
-The party does not need a restart: click the **PiTube logo** in the header.
-- **Normal mode**: the logo is greyed out. Clicking it opens a window offering an optional 4-digit PIN and a **Launch!** button (or the cross to cancel).
-- **Party mode**: the logo is in colour and the header shows a **PARTY 🎉** label. Clicking the logo opens a window to **Stop** the party (it asks for the PIN if one was set; without a PIN, anyone can stop it, just like anyone can start it, even while the party is locked).
+The party does not need a restart: click the **PARTY label** next to the PiTube logo in the header.
+- **Normal mode**: the label is greyed out. Clicking it opens a window offering an optional 4-digit PIN and a **Launch!** button (or the cross to cancel).
+- **Party mode**: the label is in colour, followed by a small 🎉 icon. Clicking it opens a window to **Stop** the party (it asks for the PIN if one was set; without a PIN, anyone can stop it, just like anyone can start it, even while the party is locked).
 - Starting the party starts with an empty queue. Stopping it stops the music, clears the queue and unlocks the party.
 - Every other device notices the change within a few seconds and reloads itself in the right mode (so audio playing in a browser in normal mode is interrupted).
 - The PIN chosen when starting is the one used to lock / unlock / stop the party (see *Party lock*). Starting with `python3 server.py --party -pin 1234` does the same thing.
-- A long-click (or right-click) on the logo still shows / hides the QR code instead of opening the window.
+- The PiTube logo itself is never greyed out; in party mode a long-click (or right-click) on it shows / hides the QR code.
 
 ### QR code
 In party mode only, a QR code pointing to the server address is shown on the left of the results.
@@ -111,7 +111,7 @@ With a PIN, anyone who knows the code can lock, unlock or stop (from any device,
 Without a PIN, no code is asked. On the command line, `-pin` is ignored (with a warning) without `--party`.
 After 5 wrong codes from the same address, that address is locked out for 60 seconds.
 
-Logos are read from `assets/logo.png` (normal mode, shown greyed out) and `assets/logo_party.png` (party mode).
+Logos are read from `assets/logo.png` (normal mode) and `assets/logo_party.png` (party mode).
 
 ## Security
 - There is no SQL database (playlists are stored in `playlists.json`), so SQL injection is not possible. The search text is only passed to yt-dlp as `ytsearchN:<text>`, never to a shell.
