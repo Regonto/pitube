@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PiTube</title>
 <script>
   // Apply the saved theme before first paint (no flash). Falls back to the system preference.
@@ -56,6 +56,7 @@
     --danger-text: #c0392b;
     color-scheme: light;
   }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Roboto', Arial, sans-serif; font-size: 14px; min-height: 100vh; }
 
@@ -63,8 +64,8 @@
   header { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; padding: 0 1rem; height: 56px; }
   .logo { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); flex-shrink: 0; }
   .logo svg { display: block; }
-  .search-bar { flex: 1; display: flex; max-width: 640px; margin: 0 auto; }
-  .search-bar input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-right: none; border-radius: var(--radius) 0 0 var(--radius); padding: 0 12px; height: 36px; color: var(--text); font-size: 15px; outline: none; }
+  .search-bar { flex: 1; min-width: 0; display: flex; max-width: 640px; margin: 0 auto; }
+  .search-bar input { flex: 1; min-width: 0; width: 100%; background: var(--bg); border: 1px solid var(--border); border-right: none; border-radius: var(--radius) 0 0 var(--radius); padding: 0 12px; height: 36px; color: var(--text); font-size: 15px; outline: none; }
   .search-bar input:focus { border-color: #1c62b9; }
   .search-bar button { background: var(--surface2); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0; padding: 0 14px; height: 36px; cursor: pointer; color: var(--text); font-size: 18px; }
   .search-bar button:hover { background: var(--surface3); }
@@ -338,6 +339,8 @@
   @media (max-width: 600px) {
     /* Header */
     header { padding: 0 8px; gap: 8px; height: 50px; }
+    .search-bar input { font-size: 16px; }   /* < 16px makes iOS zoom in on focus */
+    #btn-theme { width: 34px; height: 34px; }
     #logo-img { height: 28px; }
     #party-badge { font-size: 10px; padding: 1px 5px; }
 
