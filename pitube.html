@@ -64,7 +64,10 @@
   header { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; padding: 0 1rem; height: 56px; }
   .logo { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); flex-shrink: 0; }
   .logo svg { display: block; }
-  .search-bar { flex: 1; min-width: 0; display: flex; max-width: 640px; margin: 0 auto; }
+  /* equal-width sides keep the search bar exactly centred on wide screens */
+  .hdr-side { flex: 1 1 0; min-width: 0; display: flex; align-items: center; }
+  .hdr-right { justify-content: flex-end; }
+  .search-bar { flex: 0 1 640px; min-width: 0; display: flex; margin: 0; }
   .search-bar input { flex: 1; min-width: 0; width: 100%; background: var(--bg); border: 1px solid var(--border); border-right: none; border-radius: var(--radius) 0 0 var(--radius); padding: 0 12px; height: 36px; color: var(--text); font-size: 15px; outline: none; }
   .search-bar input:focus { border-color: #1c62b9; }
   .search-bar button { background: var(--surface2); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0; padding: 0 14px; height: 36px; cursor: pointer; color: var(--text); font-size: 18px; }
@@ -72,7 +75,7 @@
 
 
   /* ── Theme switch (header, right) ── */
-  #btn-theme { margin-left: auto; flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #btn-theme { flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
   #btn-theme:hover { background: var(--surface3); }
   #btn-theme .ico-sun { display: none; }
   :root[data-theme="dark"] #btn-theme .ico-sun { display: block; }     /* dark now -> show the sun (switch to light) */
@@ -339,6 +342,8 @@
   @media (max-width: 600px) {
     /* Header */
     header { padding: 0 8px; gap: 8px; height: 50px; }
+    .hdr-side { flex: 0 0 auto; }
+    .search-bar { flex: 1 1 0; }
     .search-bar input { font-size: 16px; }   /* < 16px makes iOS zoom in on focus */
     #btn-theme { width: 34px; height: 34px; }
     #logo-img { height: 28px; }
@@ -448,18 +453,22 @@
 <body>
 
 <header>
+  <div class="hdr-side hdr-left">
   <a class="logo" href="#">
     <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
   </a>
   <span id="party-badge">PARTY</span>
+  </div>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
     <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
     <button type="submit" aria-label="Search">&#128269;</button>
   </form>
+  <div class="hdr-side hdr-right">
   <button id="btn-theme" type="button" aria-label="Switch theme" title="Switch theme">
     <svg class="ico-sun" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
     <svg class="ico-moon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M21 14.5A9 9 0 0 1 9.5 3a9 9 0 1 0 11.5 11.5z"/></svg>
   </button>
+  </div>
 </header>
 
 <main>
