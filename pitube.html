@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PiTube</title>
+<script>
+  // Apply the saved theme before first paint (no flash). Falls back to the system preference.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('pitube-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      try { t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; } catch (e) { t = 'dark'; }
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root {
     --bg: #0f0f0f;
@@ -15,6 +26,35 @@
     --red: #2962ff;
     --red-dark: #1e4fd1;
     --radius: 8px;
+    --surface3: #3d3d3d;   /* hover on buttons */
+    --panel: #181818;      /* side drawer, save picker */
+    --footer-bg: #111;     /* player bar */
+    --popover: #1e1e1e;    /* volume popup, menus */
+    --thumb-bg: #222;      /* thumbnail placeholder, row hover */
+    --danger-bg: #2a1010;
+    --toast-bg: #323232;
+    --danger-text: #ff6b6b;
+    color-scheme: dark;
+  }
+
+  /* Light theme: not wired to any button yet.
+     To try it: document.documentElement.dataset.theme = 'light'  (remove the attribute for dark). */
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --surface2: #eaeaea;
+    --border: #d0d0d0;
+    --text: #0f0f0f;
+    --muted: #606060;
+    --surface3: #dcdcdc;
+    --panel: #fafafa;
+    --footer-bg: #f2f2f2;
+    --popover: #ffffff;
+    --thumb-bg: #e4e4e4;
+    --danger-bg: #fde8e6;
+    --toast-bg: #323232;
+    --danger-text: #c0392b;
+    color-scheme: light;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: 'Roboto', Arial, sans-serif; font-size: 14px; min-height: 100vh; }
@@ -27,7 +67,16 @@
   .search-bar input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-right: none; border-radius: var(--radius) 0 0 var(--radius); padding: 0 12px; height: 36px; color: var(--text); font-size: 15px; outline: none; }
   .search-bar input:focus { border-color: #1c62b9; }
   .search-bar button { background: var(--surface2); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0; padding: 0 14px; height: 36px; cursor: pointer; color: var(--text); font-size: 18px; }
-  .search-bar button:hover { background: #3d3d3d; }
+  .search-bar button:hover { background: var(--surface3); }
+
+
+  /* ── Theme switch (header, right) ── */
+  #btn-theme { margin-left: auto; flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #btn-theme:hover { background: var(--surface3); }
+  #btn-theme .ico-sun { display: none; }
+  :root[data-theme="dark"] #btn-theme .ico-sun { display: block; }     /* dark now -> show the sun (switch to light) */
+  :root[data-theme="dark"] #btn-theme .ico-moon { display: none; }
+  body.drawer-open #btn-theme { display: none; }
 
   /* ── List ── */
   main { padding: 1rem 1rem 100px; display: flex; align-items: flex-start; gap: 20px; }
@@ -39,7 +88,7 @@
   .card { cursor: pointer; border-radius: var(--radius); overflow: hidden; background: transparent; display: flex; gap: 22px; padding: 14px; align-items: center; }
   .card:hover { background: var(--surface2); }
   .card:hover .thumb { filter: brightness(.85); }
-  .thumb-wrap { position: relative; width: 420px; flex-shrink: 0; aspect-ratio: 16/9; background: #222; overflow: hidden; border-radius: 8px; }
+  .thumb-wrap { position: relative; width: 420px; flex-shrink: 0; aspect-ratio: 16/9; background: var(--thumb-bg); overflow: hidden; border-radius: 8px; }
   .thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
   .duration-badge { position: absolute; bottom: 8px; right: 10px; background: rgba(0,0,0,.85); color: #fff; font-size: 18px; font-weight: 500; padding: 3px 8px; border-radius: 4px; }
   .play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.3); opacity: 0; transition: opacity .15s; }
@@ -52,7 +101,7 @@
   .card-title { font-size: 28px; font-weight: 500; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .card-meta { font-size: 19px; color: var(--muted); margin-top: 8px; }
   #load-more { display: block; margin: 12px auto 0; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 24px; color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; }
-  #load-more:hover { background: #3d3d3d; }
+  #load-more:hover { background: var(--surface3); }
   #load-more:disabled { opacity: .5; cursor: default; }
 
   /* ── Card action buttons ── */
@@ -64,7 +113,7 @@
   /* ── Drawer ── */
   #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 180; }
   #drawer-overlay.open { display: block; }
-  #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; height: 100dvh; background: #181818; border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: var(--footer-h, 110px); }
+  #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; height: 100dvh; background: var(--panel); border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: var(--footer-h, 110px); }
   #drawer.open { right: 0; }
 
   /* Drawer header */
@@ -138,7 +187,7 @@
   .spl-play-btns button:hover { background: var(--red); border-color: var(--red); }
   .spl-tracks { list-style: none; display: flex; flex-direction: column; gap: 6px; }
   .spl-track { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 4px; }
-  .spl-track:hover { background: #222; }
+  .spl-track:hover { background: var(--thumb-bg); }
   .spl-track-thumb { width: 64px; height: 36px; border-radius: 3px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
   .spl-track-title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .spl-track-actions { display: none; gap: 4px; flex-shrink: 0; }
@@ -146,10 +195,10 @@
   .spl-track-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 11px; font-weight: 600; padding: 3px 7px; cursor: pointer; white-space: nowrap; }
   .spl-track-btn:hover { background: var(--red); border-color: var(--red); }
   .spl-track-del { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
-  .spl-track-del:hover { color: #c0392b; background: #2a1010; }
+  .spl-track-del:hover { color: #c0392b; background: var(--danger-bg); }
 
   /* ── Save-to-playlist picker (modal inside drawer) ── */
-  #save-picker { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: #181818; z-index: 10; flex-direction: column; }
+  #save-picker { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: var(--panel); z-index: 10; flex-direction: column; }
   #save-picker.open { display: flex; }
   .picker-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .picker-header h3 { flex: 1; font-size: 17px; font-weight: 600; }
@@ -189,7 +238,7 @@
 
   /* ── Video (server started with --video) ── */
   #btn-video { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
-  #btn-video:hover { background: #3d3d3d; }
+  #btn-video:hover { background: var(--surface3); }
   #btn-video.on { background: var(--red); border-color: var(--red); }
   /* The stage covers everything above the player (header included): the video is drawn as large as
      possible with its own aspect ratio (object-fit: contain), so it touches the screen edges in one direction. */
@@ -241,7 +290,7 @@
   body.guest-locked .pl-btns, body.guest-locked .pl-drag, body.guest-locked #btn-clear-playlist,
   body.guest-locked .btn-add-next, body.guest-locked .btn-spl-play, body.guest-locked .t-play, body.guest-locked .t-next,
   body.guest-locked .spl-btn.del, body.guest-locked .spl-track-del { display: none !important; }
-  #toast { position: fixed; left: 50%; bottom: calc(var(--footer-h, 110px) + 16px); transform: translateX(-50%) translateY(10px); background: #323232; color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 14px; max-width: 90vw; text-align: center; z-index: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--footer-h, 110px) + 16px); transform: translateX(-50%) translateY(10px); background: var(--toast-bg); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 14px; max-width: 90vw; text-align: center; z-index: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
   /* ── Touch / long-press helpers ── */
@@ -249,28 +298,28 @@
   .spl-track-more { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; line-height: 1; }
   .spl-track-more:hover { color: var(--text); background: var(--surface2); }
   @media (hover: none) { .spl-track:hover .spl-track-actions { display: none; } }
-  .ctx-btn.danger { color: #ff6b6b; }
+  .ctx-btn.danger { color: var(--danger-text); }
 
   /* ── Party mode badge ── */
   #party-badge { display:none; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
   #party-badge.on { display:inline-block; }
 
   /* ── Footer ── */
-  #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
+  #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
   .footer-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
   #footer-thumb { width: 48px; height: 27px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
   .footer-meta { flex: 1; min-width: 0; }
   #footer-title { font-size: 18px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #footer-channel { font-size: 15px; color: var(--muted); }
   #btn-pause { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 56px; height: 56px; flex-shrink: 0; cursor: pointer; color: var(--text); font-size: 26px; display: flex; align-items: center; justify-content: center; }
-  #btn-pause:hover { background: #3d3d3d; }
+  #btn-pause:hover { background: var(--surface3); }
   #btn-save-footer { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 13px; font-weight: 600; padding: 0 12px; height: 40px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
   #btn-save-footer:hover { background: var(--red); border-color: var(--red); }
   /* Volume : bouton haut-parleur + popover avec curseur */
   #vol-wrap { position: relative; flex-shrink: 0; }
   #btn-vol { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; display: flex; align-items: center; justify-content: center; }
-  #btn-vol:hover { background: #3d3d3d; }
-  #vol-pop { display: none; position: absolute; bottom: calc(100% + 12px); right: -8px; max-width: calc(100vw - 16px); background: #1e1e1e; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; z-index: 300; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  #btn-vol:hover { background: var(--surface3); }
+  #vol-pop { display: none; position: absolute; bottom: calc(100% + 12px); right: -8px; max-width: calc(100vw - 16px); background: var(--popover); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; z-index: 300; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   #vol-pop.open { display: flex; }
   #volume { -webkit-appearance: none; appearance: none; width: 170px; height: 6px; background: var(--border); border-radius: 3px; cursor: pointer; outline: none; }
   #volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none; }
@@ -278,12 +327,12 @@
   #vol-pct { font-size: 14px; color: var(--muted); min-width: 40px; text-align: right; }
   #btn-playlist { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 22px; font-weight: 600; padding: 0 20px; height: 64px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
   #btn-playlist svg { width: 32px; height: 32px; }
-  #btn-playlist:hover { background: #3d3d3d; }
+  #btn-playlist:hover { background: var(--surface3); }
   .footer-progress { display: flex; align-items: center; gap: 8px; }
   .time { font-size: 16px; color: var(--muted); white-space: nowrap; min-width: 46px; }
   #progress { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer; accent-color: var(--red); }
   audio#audio-el { display: none; }
-  #loading-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #111; border-top: 1px solid var(--border); z-index: 200; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+  #loading-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
 
   /* ── Mobile ── */
   @media (max-width: 600px) {
@@ -341,7 +390,7 @@
   }
   #ctx-overlay.open { display: flex; }
   #ctx-menu {
-    background: #1e1e1e;
+    background: var(--popover);
     border-radius: 16px 16px 0 0;
     width: 100%;
     max-width: 480px;
@@ -404,6 +453,10 @@
     <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
     <button type="submit" aria-label="Search">&#128269;</button>
   </form>
+  <button id="btn-theme" type="button" aria-label="Switch theme" title="Switch theme">
+    <svg class="ico-sun" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+    <svg class="ico-moon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M21 14.5A9 9 0 0 1 9.5 3a9 9 0 1 0 11.5 11.5z"/></svg>
+  </button>
 </header>
 
 <main>
@@ -692,7 +745,7 @@ function runSearch() {
     .then(function(r) { return r.json(); })
     .then(function(data) { results = data.results || []; renderGrid(); })
     .catch(function(err) {
-      stateMsg.innerHTML = '<p style="color:#ff6b6b">Error: could not reach the server.<br><small>' + err.message + '</small></p>';
+      stateMsg.innerHTML = '<p style="color:var(--danger-text)">Error: could not reach the server.<br><small>' + err.message + '</small></p>';
     });
 }
 
@@ -1817,9 +1870,20 @@ document.addEventListener('keydown', function(e) {
   if (VIDEO && _vidShown) { showVideo(false); e.preventDefault(); }
 });
 
+// ── Theme switch ──
+(function () {
+  var b = document.getElementById('btn-theme');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('pitube-theme', next); } catch (e) {}
+  });
+})();
+
 // ── Drawer ──
-function openDrawer()  { drawer.classList.add('open'); drawerOverlay.classList.add('open'); renderPlaylist(); loadSavedPlaylists(); }
-function closeDrawer() { drawer.classList.remove('open'); drawerOverlay.classList.remove('open'); }
+function openDrawer()  { document.body.classList.add('drawer-open'); drawer.classList.add('open'); drawerOverlay.classList.add('open'); renderPlaylist(); loadSavedPlaylists(); }
+function closeDrawer() { document.body.classList.remove('drawer-open'); drawer.classList.remove('open'); drawerOverlay.classList.remove('open'); }
 btnPlaylist.addEventListener('click', openDrawer);
 btnCloseDrawer.addEventListener('click', closeDrawer);
 drawerOverlay.addEventListener('click', closeDrawer);
@@ -1882,6 +1946,8 @@ function sendCmd(obj) {
 
 var _lastQueueSig = null;
 var _plRev = null;
+var _openSeq = null;   // last open_seq seen (first state only sets the baseline: no video at page load)
+var IS_LOCAL = /[?&]tv\b/.test(location.search);   // the Pi's own screen (set by /mode, or open /?tv)
 
 function applyPartyState(state) {
   // Volume (don't fight the slider while the user is dragging it)
@@ -1892,6 +1958,12 @@ function applyPartyState(state) {
   if (_srv.at === 0) _srv.at = Date.now();
   if (VIDEO) {
     var cur = state.queue && state.queue[state.current_idx];
+    // Someone started a track by hand (any device): the Pi's own screen opens the video too.
+    if (state.open_seq !== undefined) {
+      if (_openSeq === null) { if (cur && !_vidShown) userOpensVideo(cur); }   // page opened mid-track: show its video
+      else if (state.open_seq !== _openSeq && IS_LOCAL && cur) userOpensVideo(cur);
+      _openSeq = state.open_seq;
+    }
     videoTrackChanged(cur ? cur.id : null);
     syncVideo();
   }
@@ -2014,6 +2086,7 @@ fetch(API + '/mode')
     loadSavedPlaylists();
     if (data.url) qrUrlEl.textContent = data.url.replace(/^https?:\/\//, '');
     PIN_REQUIRED = !!data.pin;
+    if (data.local) IS_LOCAL = true;
     VIDEO = !!data.video;
     if (VIDEO) btnVideo.style.display = 'flex';
     if (data.party) {

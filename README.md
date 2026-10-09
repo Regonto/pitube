@@ -99,3 +99,13 @@ Logos are read from `assets/logo.png` (normal) and `assets/logo_party.png` (part
 - Keep yt-dlp up to date or audio extraction will break: `pip install -U yt-dlp`
 - Party mode requires `mpv` installed on the Pi
 - Saved playlists are stored in `playlists.json` next to `server.py`
+
+### Écran du Pi et vidéo (mode Party + `--video`)
+Quand une musique est lancée à la main depuis n'importe quel appareil (lecture, « Lire maintenant », clic dans la queue/playlist),
+la vidéo s'ouvre aussi sur l'écran du Pi (grand format ; si le mini-lecteur est déjà là, il change juste de vidéo).
+Ouvrir la page (n'importe quel appareil) pendant qu'une musique est en cours affiche aussi sa vidéo. Rien ne s'ouvre au passage automatique à la piste suivante.
+Le Pi est reconnu s'il se connecte via `localhost` / son IP ; sinon ouvrez la page avec `?tv` (ex. `http://192.168.1.42:5000/?tv`).
+
+### Thème clair / sombre
+Bouton soleil / lune en haut à droite du header (masqué quand le volet latéral est ouvert). Le choix est mémorisé dans le navigateur ;
+au premier chargement, le thème suit le réglage du système (clair ou sombre). Les couleurs sont des variables CSS (`:root` et `:root[data-theme="light"]`).
