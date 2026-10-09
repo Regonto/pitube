@@ -29,7 +29,10 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 import yt_dlp
 
 # ── Mode ─────────────────────────────────────────────────────────────────────
-PARTY_MODE = "--party" in sys.argv
+PARTY_MODE = "--party" in sys.argv          # what the server was started with
+# The party can also be started / stopped live from the page (see /party/start and /party/stop),
+# so what really matters at run time is this flag:
+party_on = {"v": PARTY_MODE}
 
 # --video: also serve the video stream, so the page can show it (works with or without --party)
 VIDEO_MODE = "--video" in sys.argv
@@ -68,7 +71,7 @@ def _parse_pin():
     if not given:
         return None
     if not PARTY_MODE:
-        print("Warning: -pin is ignored, it only works with --party")
+        print("Warning: -pin is ignored without --party (you can also choose a PIN when starting the party from the page)")
         return None
     if not re.fullmatch(r"[0-9]{4}", pin):
         sys.exit("Error: -pin needs exactly 4 digits, e.g.  python3 server.py --party -pin 1234")
@@ -116,7 +119,7 @@ def _is_master():
 
 def _guest_locked():
     """True when the party is locked and this request does NOT come from the master."""
-    return PARTY_MODE and party_state["locked"] and not _is_master()
+    return party_on["v"] and party_state["locked"] and not _is_master()
 
 app = Flask(__name__)
 # No CORS on purpose: the page is served by this same server, so no other website may call the API
@@ -394,7 +397,7 @@ def playlists_op():
         playlists_rev["n"] += 1
         rev = playlists_rev["n"]
 
-    if PARTY_MODE:                      # tell every connected device (incl. the master) to refresh
+    if party_on["v"]:                  # tell every connected device (incl. the master) to refresh
         with party_lock:
             party_state["playlists_rev"] = rev
         broadcast(state_snapshot())
@@ -444,7 +447,7 @@ def _is_local_client():
 # ── Mode endpoint (so the front knows which mode is active) ───────────────────
 @app.route("/mode")
 def mode():
-    return jsonify({"party": PARTY_MODE, "url": PUBLIC_URL, "pin": bool(PARTY_PIN), "video": VIDEO_MODE,
+    return jsonify({"party": party_on["v"], "url": PUBLIC_URL, "pin": bool(PARTY_PIN), "video": VIDEO_MODE,
                     "local": _is_local_client()})
 
 # ── QR code pointing to the server address (needs: pip install segno) ─────────
@@ -464,7 +467,8 @@ def qr_svg():
 # =============================================================================
 # PARTY MODE
 # =============================================================================
-if PARTY_MODE:
+# The party machinery is always loaded; it only does something while party_on is set.
+if True:
     # ── Shared state ─────────────────────────────────────────────────────────
     party_lock = threading.RLock()   # re-entrant: state_snapshot() takes it again
     party_state = {
@@ -590,6 +594,8 @@ if PARTY_MODE:
     def play_track(idx, user=False):
         global mpv_proc
         with party_lock:
+            if not party_on["v"]:
+                return                      # the party was stopped meanwhile
             if idx < 0 or idx >= len(party_state["queue"]):
                 return                      # nothing to play there: leave everything as it is
             track = party_state["queue"][idx]
@@ -788,6 +794,8 @@ if PARTY_MODE:
     # ── Command endpoint ───────────────────────────────────────────────────────
     @app.route("/command", methods=["POST"])
     def command():
+        if not party_on["v"]:
+            return jsonify({"error": "party_off"}), 409
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "Bad request"}), 400
@@ -986,6 +994,58 @@ if PARTY_MODE:
 
         return jsonify({"ok": True})
 
+    # ── Start / stop the party live ───────────────────────────────────────────
+    PARTY_LIFECYCLE_LOCK = threading.Lock()
+
+    @app.route("/party/start", methods=["POST"])
+    def party_start():
+        global PARTY_PIN
+        b = request.get_json(silent=True)
+        b = b if isinstance(b, dict) else {}
+        pin = str(b.get("pin") or "")
+        if pin and not re.fullmatch(r"[0-9]{4}", pin):
+            return jsonify({"error": "bad_pin_format"}), 400
+        with PARTY_LIFECYCLE_LOCK:
+            if party_on["v"]:
+                return jsonify({"error": "already_on"}), 409
+            with party_lock:
+                party_state.update({"queue": [], "current_idx": -1, "is_playing": False, "position": 0.0,
+                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0})
+                party_master["id"] = None
+            PARTY_PIN = pin or None
+            _pin_fails.clear()
+            party_on["v"] = True
+        print("[party] started from %s%s" % (request.remote_addr, " (PIN set)" if PARTY_PIN else ""))
+        return jsonify({"ok": True})
+
+    @app.route("/party/stop", methods=["POST"])
+    def party_stop():
+        global PARTY_PIN
+        b = request.get_json(silent=True)
+        b = b if isinstance(b, dict) else {}
+        with PARTY_LIFECYCLE_LOCK:
+            if not party_on["v"]:
+                return jsonify({"error": "already_off"}), 409
+            if PARTY_PIN:
+                err = _check_pin(b)                  # the code replaces the master check
+                if err:
+                    return err
+            elif party_state["locked"] and not _is_master():
+                return jsonify({"error": "locked"}), 403
+            with party_lock:
+                party_on["v"] = False
+                play_gen["n"] += 1                   # cancels any load in progress
+                mpv_state["ready"] = False
+                mpv_state["pending_seek"] = None
+                party_state.update({"queue": [], "current_idx": -1, "is_playing": False, "position": 0.0,
+                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0})
+                party_master["id"] = None
+            PARTY_PIN = None
+            with launch_lock:
+                _stop_mpv()
+        print("[party] stopped from %s" % request.remote_addr)
+        return jsonify({"ok": True})
+
     @app.route("/lock")
     def lock_status():
         return jsonify({"locked": party_state["locked"], "master": _is_master()})
@@ -998,7 +1058,7 @@ if PARTY_MODE:
 # MAIN
 # =============================================================================
 if __name__ == "__main__":
-    mode_str = " [PARTY MODE]" if PARTY_MODE else ""
+    mode_str = " [PARTY MODE]" if party_on["v"] else ""
     print("PiTube backend running on http://0.0.0.0:5000" + mode_str)
     print("QR code points to " + PUBLIC_URL)
     if VIDEO_MODE:

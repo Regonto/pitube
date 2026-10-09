@@ -306,7 +306,26 @@
 
   /* ── Party mode badge ── */
   #party-badge { display:none; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
-  #party-badge.on { display:inline-block; }
+  #party-badge.on { display:inline-flex; align-items:center; gap:4px; }
+  #party-badge .tada { display:block; flex-shrink:0; }
+  /* logo: greyed out while the party is off; click = start / stop the party */
+  #logo-img { cursor: pointer; transition: filter .25s, opacity .25s; }
+  #logo-img.off { filter: grayscale(1); opacity: .5; }
+  #party-modal { display: none; position: fixed; inset: 0; z-index: 450; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; }
+  #party-modal.open { display: flex; }
+  .pm-card { position: relative; width: 340px; max-width: 100%; background: var(--popover); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 22px 20px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.45); text-align: center; }
+  .pm-x { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
+  .pm-x:hover { background: var(--surface3); color: var(--text); }
+  .pm-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .pm-title .tada { width: 24px; height: 24px; }
+  .pm-text { color: var(--muted); font-size: 13px; line-height: 1.4; margin-bottom: 14px; }
+  #pm-pin { width: 100%; height: 44px; text-align: center; font-size: 22px; letter-spacing: .4em; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); outline: none; margin-bottom: 14px; }
+  #pm-pin:focus { border-color: var(--red); }
+  #pm-pin::placeholder { font-size: 14px; letter-spacing: normal; }
+  #pm-go { width: 100%; height: 44px; border: none; border-radius: 10px; background: var(--red); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  #pm-go:hover { background: var(--red-dark); }
+  #pm-go:disabled { opacity: .6; cursor: default; }
+  #party-modal.stop #pm-go { background: #c0392b; }
 
   /* ── Footer ── */
   #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
@@ -455,9 +474,9 @@
 <header>
   <div class="hdr-side hdr-left">
   <a class="logo" href="#">
-    <img id="logo-img" src="assets/logo.png" alt="PiTube" style="height:40px;width:auto;display:block;">
+    <img id="logo-img" class="off" src="assets/logo.png" alt="PiTube" title="Start the party" style="height:40px;width:auto;display:block;">
   </a>
-  <span id="party-badge">PARTY</span>
+  <span id="party-badge"><span id="party-badge-text">PARTY</span><svg class="tada" viewBox="0 0 36 36" width="14" height="14" aria-hidden="true"><path d="M3.5 32.5 11 11.5l13.5 13.5z" fill="#FFB02E"/><path d="M11 11.5l-3.2 9 7.7 7.7 9-3.2z" fill="#F4900C" opacity=".55"/><circle cx="25" cy="7" r="2.3" fill="#2962ff"/><circle cx="31" cy="15" r="2" fill="#E91E63"/><rect x="21" y="3" width="3.6" height="3.6" rx=".8" fill="#FFD43B" transform="rotate(25 22.8 4.8)"/><rect x="29" y="21" width="3.6" height="3.6" rx=".8" fill="#4CAF50" transform="rotate(-20 30.8 22.8)"/><path d="M16 9c0-3 3-4.5 4.5-2.2M27 12.5c3-1 5 .8 4.2 3" fill="none" stroke="#E91E63" stroke-width="1.6" stroke-linecap="round"/></svg></span>
   </div>
   <form class="search-bar" id="search-form" action="javascript:void(0)">
     <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
@@ -599,6 +618,17 @@
     </div>
     <div id="picker-list"></div>
     <button id="btn-confirm-save">Done</button>
+  </div>
+</div>
+
+<!-- Start / stop the party (click on the logo) -->
+<div id="party-modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+  <div class="pm-card">
+    <button class="pm-x" id="pm-x" title="Cancel" aria-label="Cancel">&#10005;</button>
+    <div class="pm-title" id="pm-title"></div>
+    <div class="pm-text" id="pm-text"></div>
+    <input id="pm-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    <button id="pm-go"></button>
   </div>
 </div>
 
@@ -1531,7 +1561,7 @@ function renderLock() {
                 : _isMaster ? 'Unlock the party' : PIN_REQUIRED ? 'Locked: enter the PIN to unlock' : 'Locked by the master';
   lockLabel.textContent = !_locked ? 'Party open'
                 : _isMaster ? 'Locked: tap to unlock' : PIN_REQUIRED ? 'Locked: PIN needed to unlock' : 'Locked by the master';
-  document.getElementById('party-badge').textContent = _locked ? 'PARTY \uD83D\uDD12' : 'PARTY';
+  document.getElementById('party-badge-text').textContent = _locked ? 'PARTY \uD83D\uDD12' : 'PARTY';
 }
 function refreshLock() {
   if (!PARTY) return;
@@ -1591,6 +1621,76 @@ document.addEventListener('keydown', function(e) {
   e.preventDefault();
   _pauseHandler();
 });
+
+
+// ── Start / stop the party live (click on the logo) ──
+var pmEl = document.getElementById('party-modal');
+var pmPin = document.getElementById('pm-pin');
+var pmGo  = document.getElementById('pm-go');
+var _pmBusy = false;
+var TADA_SVG = document.querySelector('#party-badge .tada').outerHTML;
+
+function openPartyModal() {
+  var stopping = PARTY;
+  pmEl.classList.toggle('stop', stopping);
+  document.getElementById('pm-title').innerHTML = stopping ? 'Stop the party' : 'Start the party ' + TADA_SVG;
+  document.getElementById('pm-text').textContent = stopping
+    ? 'The music stops on the Pi and the queue is cleared. Everybody goes back to normal mode.'
+    : 'The music plays on the Pi and everybody shares the same queue. You can choose an optional 4-digit PIN that will be needed to lock, unlock or stop the party.';
+  pmGo.textContent = stopping ? 'Stop' : 'Launch!';
+  pmGo.disabled = false;
+  pmPin.value = '';
+  var needPin = !stopping || PIN_REQUIRED;
+  pmPin.style.display = needPin ? 'block' : 'none';
+  pmPin.placeholder = stopping ? 'PIN' : 'PIN (optional)';
+  pmEl.classList.add('open');
+  if (needPin) pmPin.focus(); else pmGo.focus();
+}
+function closePartyModal() { pmEl.classList.remove('open'); pmPin.value = ''; }
+
+function submitPartyModal() {
+  if (_pmBusy) return;
+  var stopping = PARTY, body = {};
+  var pin = pmPin.value;
+  if (stopping && PIN_REQUIRED) {
+    if (!/^[0-9]{4}$/.test(pin)) { toast('Enter the 4-digit PIN'); pmPin.focus(); return; }
+    body.pin = pin;
+  } else if (!stopping && pin) {
+    if (!/^[0-9]{4}$/.test(pin)) { toast('The PIN must be 4 digits (or leave it empty)'); pmPin.focus(); return; }
+    body.pin = pin;
+  }
+  _pmBusy = true; pmGo.disabled = true;
+  fetch(API + (stopping ? '/party/stop' : '/party/start'), { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; }); })
+    .then(function(x) {
+      _pmBusy = false; pmGo.disabled = false;
+      if (x.status === 200 || x.d.error === 'already_on' || x.d.error === 'already_off') { location.reload(); return; }
+      if (x.d.error === 'bad_pin') { toast('Wrong PIN'); pmPin.value = ''; pmPin.focus(); }
+      else if (x.status === 429) { toast('Too many attempts, try again in ' + (x.d.retry_in || 60) + ' s'); pmPin.value = ''; }
+      else if (x.d.error === 'locked') toast('Party locked: only the master can stop it');
+      else toast('Could not ' + (stopping ? 'stop' : 'start') + ' the party');
+    })
+    .catch(function() { _pmBusy = false; pmGo.disabled = false; toast('Server unreachable'); });
+}
+pmGo.addEventListener('click', submitPartyModal);
+pmPin.addEventListener('input', function() { pmPin.value = pmPin.value.replace(/\D/g, '').slice(0, 4); });
+pmPin.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitPartyModal(); });
+document.getElementById('pm-x').addEventListener('click', closePartyModal);
+pmEl.addEventListener('click', function(e) { if (e.target === pmEl) closePartyModal(); });
+_logoLink.addEventListener('click', function(e) {
+  e.preventDefault();
+  if (lpRecent()) return;                       // a long-press shows / hides the QR code instead
+  openPartyModal();
+});
+
+// Another device started / stopped the party: follow it (the page reloads in the right mode)
+setInterval(function() {
+  if (document.hidden || _pmBusy) return;
+  fetch(API + '/mode').then(function(r) { return r.json(); }).then(function(d) {
+    if (!!d.party !== !!PARTY) { location.reload(); return; }
+    PIN_REQUIRED = !!d.pin;
+  }).catch(function() {});
+}, 4000);
 
 // ── Video (server started with --video) ──
 // The video is a MUTED companion of the audio, kept in sync with it:
@@ -1882,6 +1982,7 @@ stage.addEventListener('contextmenu', function(e) {                  // long-pre
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
   if (fsElement()) return;
+  if (pmEl.classList.contains('open')) { closePartyModal(); e.preventDefault(); return; }
   if (ctxOverlay.classList.contains('open')) { closeCtxMenu(); return; }
   var tag = document.activeElement && document.activeElement.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA') return;           // Escape belongs to the field (PIN, search...)
@@ -2114,6 +2215,8 @@ fetch(API + '/mode')
     if (VIDEO) btnVideo.style.display = 'flex';
     if (data.party) {
       document.getElementById('logo-img').src = 'assets/logo_party.png';
+      document.getElementById('logo-img').classList.remove('off');
+      document.getElementById('logo-img').title = 'Stop the party (long-click: QR code)';
       initParty();
       activatePartyControls();
     }
