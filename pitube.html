@@ -325,6 +325,11 @@
   #pm-go:hover { background: var(--red-dark); }
   #pm-go:disabled { opacity: .6; cursor: default; }
   #party-modal.stop #pm-go { background: #c0392b; }
+  /* Large screens: no dimmed backdrop, a light popover under the header where the QR code sits */
+  @media (min-width: 900px) {
+    #party-modal { background: transparent; align-items: flex-start; justify-content: flex-start; padding: 72px 0 0 16px; }
+    .pm-card { width: 300px; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+  }
 
   /* ── Footer ── */
   #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
