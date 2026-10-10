@@ -1689,29 +1689,51 @@ function mcLoad(id, attempt) {
     })
     .catch(again);
 }
-// Keep this device's audio on the party clock (same drift policy as the video)
+// Keep this device's audio on the party clock. Gentle on purpose: every jump on a streamed file can
+// cause a stutter, so this only trusts a median of recent measurements, nudges the speed for small
+// gaps, jumps only for a big, lasting one, and never touches anything while the buffer is empty.
+var _mcDrifts = [], _mcAligned = false, _mcLastSeek = 0, _mcNudge = 1, _mcPlayingBefore = false;
+function mcMedian(a) { var b = a.slice().sort(function(x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
+function mcResetDrift() { _mcDrifts = []; _mcAligned = false; _mcNudge = 1; }
+function mcSetRate(r) { if (Math.abs(mcAudio.playbackRate - r) > 0.001) mcAudio.playbackRate = r; }
 function mcSync() {
   if (!mcAvailable() || !_mcWant) return;
-  if (_mcCurId !== _mcTrackId) mcLoad(_mcCurId);
+  if (_mcCurId !== _mcTrackId) { mcResetDrift(); mcLoad(_mcCurId); }
   if (!mcAudio.getAttribute('src') || mcAudio.readyState < 1) return;
   var c = videoClock(), t = c.t;
   if (isFinite(mcAudio.duration)) t = Math.min(t, mcAudio.duration);
-  mcAudio.volume = Math.max(0, Math.min(1, _vol));
+  var vol = Math.max(0, Math.min(1, _vol));
+  if (Math.abs(mcAudio.volume - vol) > 0.005) mcAudio.volume = vol;
   var base = _srv.speed || 1;
   if (!c.playing) {
+    _mcPlayingBefore = false;
     if (!mcAudio.paused) mcAudio.pause();
-    if (Math.abs(mcAudio.currentTime - t) > 0.3) mcAudio.currentTime = t;
-    mcAudio.playbackRate = base;
+    if (Math.abs(mcAudio.currentTime - t) > 0.5) mcAudio.currentTime = t;
+    mcSetRate(base);
     return;
   }
-  var act = videoDriftAction(mcAudio.currentTime - t, base > 1 ? 3 : 0.6);
-  if (act === 'seek') { mcAudio.currentTime = t; mcAudio.playbackRate = base; }
-  else mcAudio.playbackRate = base * (act === 'faster' ? 1.03 : act === 'slower' ? 0.97 : 1);
+  if (!_mcPlayingBefore) { _mcPlayingBefore = true; _mcDrifts = []; }   // restarted: old measurements are void
   if (mcAudio.paused) {
     var pr = mcAudio.play();
     if (pr && pr.then) pr.then(function() { if (_mcBlocked) { _mcBlocked = false; renderListen(); } })
                          .catch(function(e) { if (e && e.name === 'NotAllowedError' && !_mcBlocked) { _mcBlocked = true; renderListen(); } });
   }
+  if (mcAudio.readyState < 3) return;          // still buffering: do not make it worse by jumping around
+  var now = Date.now(), drift = mcAudio.currentTime - t;     // + = this device is ahead
+  if (!_mcAligned) {                            // first alignment of a track: one jump, if needed
+    _mcAligned = true;
+    if (Math.abs(drift) > 0.4) { mcAudio.currentTime = t + 0.2; _mcLastSeek = now; _mcDrifts = []; }
+    mcSetRate(base);
+    return;
+  }
+  _mcDrifts.push(drift); if (_mcDrifts.length > 7) _mcDrifts.shift();
+  if (_mcDrifts.length < 4) return;
+  var m = mcMedian(_mcDrifts), a = Math.abs(m);
+  if (a > 1.5 * Math.max(1, base) && now - _mcLastSeek > 5000) {   // lost for good: jump (rarely)
+    mcAudio.currentTime = t + 0.3; _mcLastSeek = now; _mcDrifts = []; _mcNudge = 1;
+  } else if (a > 0.3) _mcNudge = m > 0 ? 0.97 : 1.03;              // small gap: change the speed a little
+  else if (a < 0.1) _mcNudge = 1;                                  // back in step (hysteresis: no chattering)
+  mcSetRate(base * _mcNudge);
 }
 function mcSetWant(on) {
   _mcWant = on;
@@ -1719,7 +1741,7 @@ function mcSetWant(on) {
   if (on) {
     mcAudio.src = MC_SILENT;                // inside the tap: unlocks the element
     var pr = mcAudio.play(); if (pr && pr.catch) pr.catch(function() {});
-    _mcTrackId = null; _mcBlocked = false;
+    _mcTrackId = null; _mcBlocked = false; mcResetDrift();
     mcSync();
   } else { mcStop(); _mcBlocked = false; }
   renderListen();
