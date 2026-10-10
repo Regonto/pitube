@@ -416,6 +416,14 @@ BASE_DIR = os.path.dirname(__file__)
 def index():
     return send_from_directory(BASE_DIR, "pitube.html")
 
+@app.route("/favicon.ico")
+def favicon():
+    # the page declares its own icon; this only answers the request browsers make anyway (no more 404 in the logs)
+    path = os.path.join(BASE_DIR, "assets", "favicon.ico")
+    if os.path.isfile(path):
+        return send_from_directory(os.path.join(BASE_DIR, "assets"), "favicon.ico")
+    return Response(status=204)
+
 @app.route("/assets/<path:filename>")
 def assets(filename):
     return send_from_directory(os.path.join(BASE_DIR, "assets"), filename)
