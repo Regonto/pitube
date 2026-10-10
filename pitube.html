@@ -245,6 +245,12 @@
   /* ── Video (server started with --video) ── */
   #btn-video { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
   #btn-video:hover { background: var(--surface3); }
+  /* Multicast: listen on this device */
+  #btn-listen { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
+  #btn-listen:hover { background: var(--surface3); }
+  #btn-listen.on { background: var(--red); border-color: var(--red); }
+  #btn-listen.blocked { border-color: var(--red); animation: mcpulse 1.2s ease-in-out infinite; }
+  @keyframes mcpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(41,98,255,.55); } 50% { box-shadow: 0 0 0 8px rgba(41,98,255,0); } }
   #btn-video.on { background: var(--red); border-color: var(--red); }
   /* The stage covers everything above the player (header included): the video is drawn as large as
      possible with its own aspect ratio (object-fit: contain), so it touches the screen edges in one direction. */
@@ -327,6 +333,15 @@
   #pm-go:hover { background: var(--red-dark); }
   #pm-go:disabled { opacity: .6; cursor: default; }
   #party-modal.stop #pm-go { background: #c0392b; }
+  .pm-toggle { display: flex; align-items: center; gap: 12px; text-align: left; margin-bottom: 14px; cursor: pointer; }
+  .pm-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .pm-sw { flex: 0 0 auto; width: 40px; height: 22px; border-radius: 11px; background: var(--surface3); position: relative; transition: background .2s; }
+  .pm-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .pm-toggle input:checked + .pm-sw { background: var(--red); }
+  .pm-toggle input:checked + .pm-sw::after { transform: translateX(18px); }
+  .pm-toggle input:focus-visible + .pm-sw { outline: 2px solid var(--red); outline-offset: 2px; }
+  .pm-toggle b { display: block; font-size: 14px; }
+  .pm-toggle small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 2px; }
   /* Large screens: no dimmed backdrop, a light popover under the header where the QR code sits */
   @media (min-width: 900px) {
     #party-modal { background: transparent; }
@@ -395,6 +410,7 @@
     #btn-pause { width: 40px; height: 40px; font-size: 18px; }
     #btn-save-footer { font-size: 12px; padding: 0 8px; height: 34px; }
     #btn-vol { width: 40px; height: 40px; font-size: 18px; }
+    #btn-listen { width: 40px; height: 40px; font-size: 18px; }
     #btn-video { width: 40px; height: 40px; font-size: 18px; }
     #btn-playlist { font-size: 16px; padding: 0 10px; height: 44px; }
     #btn-playlist svg { width: 20px; height: 20px; }
@@ -559,6 +575,7 @@
         <span id="vol-pct">100%</span>
       </div>
     </div>
+    <button id="btn-listen" title="Listen on this device" style="display:none">&#127911;</button>
     <button id="btn-video" title="Show the video (F = fullscreen)" style="display:none">&#127916;</button>
     <button id="btn-playlist" title="Queue &amp; Playlists">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>
@@ -634,6 +651,7 @@
     <button class="pm-x" id="pm-x" title="Cancel" aria-label="Cancel">&#10005;</button>
     <div class="pm-title" id="pm-title"></div>
     <div class="pm-text" id="pm-text"></div>
+    <label class="pm-toggle" id="pm-mc-row"><input type="checkbox" id="pm-mc"><span class="pm-sw"></span><span><b>Multicast</b><small>Also play the music on the other devices, not only on the Pi (kept in sync).</small></span></label>
     <input id="pm-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
     <button id="pm-go"></button>
   </div>
@@ -1630,6 +1648,88 @@ document.addEventListener('keydown', function(e) {
 });
 
 
+// ── Multicast: this device plays the music too, in sync with the Pi (party started with --multicast) ──
+var MULTICAST = false;                      // from the party state
+var mcAudio   = new Audio();
+mcAudio.preload = 'auto';
+var btnListen = document.getElementById('btn-listen');
+var _mcWant = false;                        // this device listens
+try { _mcWant = localStorage.getItem('pitube-listen') === '1'; } catch (e) {}
+var _mcTrackId = null, _mcCurId = null, _mcReq = 0, _mcBlocked = false;
+// a silent clip: playing it inside a tap unlocks the audio element on iOS / Safari
+var MC_SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+function mcAvailable() { return PARTY && MULTICAST && !IS_LOCAL; }   // the Pi itself already plays through mpv
+function renderListen() {
+  btnListen.style.display = mcAvailable() ? 'flex' : 'none';
+  btnListen.classList.toggle('on', _mcWant && !_mcBlocked);
+  btnListen.classList.toggle('blocked', _mcWant && _mcBlocked);
+  btnListen.title = !_mcWant ? 'Listen on this device (multicast)'
+                  : _mcBlocked ? 'Tap to start the sound on this device'
+                  : 'Listening on this device: tap to stop';
+}
+function mcStop() {
+  _mcReq++; _mcTrackId = null;
+  mcAudio.pause(); mcAudio.removeAttribute('src'); mcAudio.load();
+}
+function mcLoad(id, attempt) {
+  var req = ++_mcReq;
+  mcAudio.pause(); mcAudio.removeAttribute('src'); mcAudio.load();
+  _mcTrackId = id;
+  if (!id) return;
+  attempt = attempt || 0;
+  function again() { if (attempt < 3) setTimeout(function() { if (req === _mcReq) mcLoad(id, attempt + 1); }, 2000); }
+  fetch(API + '/party-audio?id=' + encodeURIComponent(id))
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(x) {
+      if (req !== _mcReq) return;
+      if (x.ok && x.d.url) { mcAudio.src = x.d.url; mcSync(); }
+      else again();
+    })
+    .catch(again);
+}
+// Keep this device's audio on the party clock (same drift policy as the video)
+function mcSync() {
+  if (!mcAvailable() || !_mcWant) return;
+  if (_mcCurId !== _mcTrackId) mcLoad(_mcCurId);
+  if (!mcAudio.getAttribute('src') || mcAudio.readyState < 1) return;
+  var c = videoClock(), t = c.t;
+  if (isFinite(mcAudio.duration)) t = Math.min(t, mcAudio.duration);
+  mcAudio.volume = Math.max(0, Math.min(1, _vol));
+  var base = _srv.speed || 1;
+  if (!c.playing) {
+    if (!mcAudio.paused) mcAudio.pause();
+    if (Math.abs(mcAudio.currentTime - t) > 0.3) mcAudio.currentTime = t;
+    mcAudio.playbackRate = base;
+    return;
+  }
+  var act = videoDriftAction(mcAudio.currentTime - t, base > 1 ? 3 : 0.6);
+  if (act === 'seek') { mcAudio.currentTime = t; mcAudio.playbackRate = base; }
+  else mcAudio.playbackRate = base * (act === 'faster' ? 1.03 : act === 'slower' ? 0.97 : 1);
+  if (mcAudio.paused) {
+    var pr = mcAudio.play();
+    if (pr && pr.then) pr.then(function() { if (_mcBlocked) { _mcBlocked = false; renderListen(); } })
+                         .catch(function(e) { if (e && e.name === 'NotAllowedError' && !_mcBlocked) { _mcBlocked = true; renderListen(); } });
+  }
+}
+function mcSetWant(on) {
+  _mcWant = on;
+  try { localStorage.setItem('pitube-listen', on ? '1' : '0'); } catch (e) {}
+  if (on) {
+    mcAudio.src = MC_SILENT;                // inside the tap: unlocks the element
+    var pr = mcAudio.play(); if (pr && pr.catch) pr.catch(function() {});
+    _mcTrackId = null; _mcBlocked = false;
+    mcSync();
+  } else { mcStop(); _mcBlocked = false; }
+  renderListen();
+}
+btnListen.addEventListener('click', function() { mcSetWant(!_mcWant); });
+// the first tap anywhere unlocks the sound when the browser refused to autoplay
+['pointerdown', 'keydown'].forEach(function(ev) {
+  document.addEventListener(ev, function() { if (_mcBlocked && _mcWant) mcSync(); }, true);
+});
+setInterval(mcSync, 500);
+
 // ── Start / stop the party live (click on the logo) ──
 var pmEl = document.getElementById('party-modal');
 var pmPin = document.getElementById('pm-pin');
@@ -1647,6 +1747,8 @@ function openPartyModal() {
   pmGo.textContent = stopping ? 'Stop' : 'Launch!';
   pmGo.disabled = false;
   pmPin.value = '';
+  document.getElementById('pm-mc').checked = false;
+  document.getElementById('pm-mc-row').style.display = stopping ? 'none' : 'flex';
   var needPin = !stopping || PIN_REQUIRED;
   pmPin.style.display = needPin ? 'block' : 'none';
   pmPin.placeholder = stopping ? 'PIN' : 'PIN (optional)';
@@ -1666,6 +1768,7 @@ function submitPartyModal() {
     if (!/^[0-9]{4}$/.test(pin)) { toast('The PIN must be 4 digits (or leave it empty)'); pmPin.focus(); return; }
     body.pin = pin;
   }
+  if (!stopping) body.multicast = document.getElementById('pm-mc').checked;
   _pmBusy = true; pmGo.disabled = true;
   fetch(API + (stopping ? '/party/stop' : '/party/start'), { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
     .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; }); })
@@ -2081,6 +2184,14 @@ function applyPartyState(state) {
   _srv.playing = !!state.is_playing && !state.loading;
   _srv.speed = state.speed || 1; _srv.dur = state.duration || 0;
   if (_srv.at === 0) _srv.at = Date.now();
+  var _curT = state.queue && state.queue[state.current_idx];
+  _mcCurId = _curT ? _curT.id : null;
+  if (state.multicast !== undefined && !!state.multicast !== MULTICAST) {
+    MULTICAST = !!state.multicast;
+    if (!MULTICAST) mcStop();
+    renderListen();
+  }
+  mcSync();
   if (VIDEO) {
     var cur = state.queue && state.queue[state.current_idx];
     // Page opened mid-track: show its video (works even with an older server without open_seq).

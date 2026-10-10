@@ -37,6 +37,20 @@ The party does not need a restart: click the **PARTY label** next to the PiTube 
 - The PIN chosen when starting is the one used to lock / unlock / stop the party (see *Party lock*). Starting with `python3 server.py --party -pin 1234` does the same thing.
 - The PiTube logo itself is never greyed out; in party mode a long-click (or right-click) on it shows / hides the QR code.
 
+### Multicast (play on the other devices too)
+By default the music only comes out of the Pi (mpv). With **multicast**, the other devices can also play it in their own browser, kept in sync with the Pi:
+```bash
+python3 server.py --party --multicast
+```
+or tick the **Multicast** switch (off by default) in the window that starts the party (click the PARTY label).
+- Everything else is unchanged: same shared queue, same controls, the Pi keeps playing.
+- On every device except the Pi, a 🎧 button appears in the player bar. Tap it to listen on that device; tap again to stop. Your choice is remembered; if the browser refuses to start the sound by itself, the button pulses and the first tap anywhere starts it.
+- The sound follows the party: play / pause / seek / x2 speed / track changes, and the volume slider also sets the volume of the devices that listen. A small drift is corrected by slightly changing the speed, a bigger one by jumping to the right position.
+- Expect an echo if a device listens in the same room as the Pi: sync is good (well under a second) but not sample-accurate. Mute the TV or keep the phones on headphones.
+- The Pi's own screen (`localhost`, its own IP, or `?tv`) never plays locally, since mpv already does.
+- The audio link for each track is looked up once on the server and shared (it is the same one mpv uses). Each listening device downloads the stream from YouTube itself, so it needs to be on the same network/IP as the Pi.
+- `--multicast` is ignored (with a warning) without `--party`.
+
 ### QR code
 In party mode only. On very wide screens (1560 px and more) the QR code is shown by default, floating in the empty left margin under the header: it takes no room, so nothing moves when it appears. Below that width it would cover the results, so it is hidden by default, like on a phone: **long-click** (or **right-click**) the logo to show it as a pop-up (click outside it, or the cross, to close it). On wide screens the same gesture hides / shows it.
 

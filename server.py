@@ -33,6 +33,12 @@ PARTY_MODE = "--party" in sys.argv          # what the server was started with
 # The party can also be started / stopped live from the page (see /party/start and /party/stop),
 # so what really matters at run time is this flag:
 party_on = {"v": PARTY_MODE}
+# --multicast (with --party): the music ALSO plays on the other devices, kept in sync with the Pi.
+# It can also be chosen when starting the party from the page. Default: off.
+MULTICAST_FLAG = "--multicast" in sys.argv
+if MULTICAST_FLAG and not PARTY_MODE:
+    print("Warning: --multicast is ignored without --party (you can also enable it when starting the party from the page)")
+    MULTICAST_FLAG = False
 
 # --video: also serve the video stream, so the page can show it (works with or without --party)
 VIDEO_MODE = "--video" in sys.argv
@@ -135,7 +141,7 @@ def _security_headers(resp):
         # connections, no plugins, no <base> tricks). Media may come from Google's video servers.
         resp.headers.setdefault("Content-Security-Policy",
             "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data: https:; media-src 'self' blob: https:; connect-src 'self'; "
+            "img-src 'self' data: https:; media-src 'self' blob: data: https:; connect-src 'self'; "
             "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
     return resp
 
@@ -448,7 +454,7 @@ def _is_local_client():
 @app.route("/mode")
 def mode():
     return jsonify({"party": party_on["v"], "url": PUBLIC_URL, "pin": bool(PARTY_PIN), "video": VIDEO_MODE,
-                    "local": _is_local_client()})
+                    "local": _is_local_client(), "multicast": bool(party_on["v"] and party_state["multicast"])})
 
 # ── QR code pointing to the server address (needs: pip install segno) ─────────
 @app.route("/qr.svg")
@@ -482,6 +488,7 @@ if True:
         "playlists_rev": 0,    # bumped when a saved playlist changes -> clients re-fetch /playlists
         "loading":      False, # a track was chosen and mpv is not playing it yet
         "speed":        1.0,   # playback speed (hold on the video = x2)
+        "multicast":    MULTICAST_FLAG,  # other devices also play the music (kept in sync with the Pi)
         "open_seq":     0,     # bumped when someone starts a track by hand -> the Pi screen opens the video
     }
     party_master = {"id": None}   # never broadcast: it would let anyone impersonate the master
@@ -1010,12 +1017,14 @@ if True:
                 return jsonify({"error": "already_on"}), 409
             with party_lock:
                 party_state.update({"queue": [], "current_idx": -1, "is_playing": False, "position": 0.0,
-                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0})
+                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0,
+                                    "multicast": bool(b.get("multicast"))})
                 party_master["id"] = None
             PARTY_PIN = pin or None
             _pin_fails.clear()
             party_on["v"] = True
-        print("[party] started from %s%s" % (request.remote_addr, " (PIN set)" if PARTY_PIN else ""))
+        print("[party] started from %s%s%s" % (request.remote_addr, " (PIN set)" if PARTY_PIN else "",
+                                          " (multicast)" if party_state["multicast"] else ""))
         return jsonify({"ok": True})
 
     @app.route("/party/stop", methods=["POST"])
@@ -1036,13 +1045,31 @@ if True:
                 mpv_state["ready"] = False
                 mpv_state["pending_seek"] = None
                 party_state.update({"queue": [], "current_idx": -1, "is_playing": False, "position": 0.0,
-                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0})
+                                    "duration": 0.0, "locked": False, "loading": False, "speed": 1.0,
+                                    "multicast": False})
                 party_master["id"] = None
             PARTY_PIN = None
             with launch_lock:
                 _stop_mpv()
         print("[party] stopped from %s" % request.remote_addr)
         return jsonify({"ok": True})
+
+    # ── Multicast: the same audio, for the other devices ──────────────────────
+    # Same lookup (and cache) as the one mpv uses, so a track is extracted once for everybody.
+    @app.route("/party-audio")
+    def party_audio():
+        if not (party_on["v"] and party_state["multicast"]):
+            return jsonify({"error": "multicast_off"}), 404
+        vid_id = request.args.get("id", "").strip()
+        if not _VID_ID_RE.fullmatch(vid_id):
+            return jsonify({"error": "Bad id"}), 400
+        try:
+            url, meta = get_audio_info(vid_id)
+        except Exception as e:
+            return jsonify({"error": _clean_err(e)}), 502
+        if not url:
+            return jsonify({"error": "No audio stream found"}), 404
+        return jsonify({"url": url, "duration": meta.get("duration")})
 
     @app.route("/lock")
     def lock_status():
@@ -1063,4 +1090,6 @@ if __name__ == "__main__":
         print("Video: on (max %dp)" % VIDEO_MAX_HEIGHT)
     if PARTY_PIN:
         print("Party lock PIN: enabled")
+    if party_on["v"] and party_state["multicast"]:
+        print("Multicast: on (other devices play the music too)")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
