@@ -1,0 +1,2377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PiTube</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 256 256%22%3E%3Crect x=%2248%22 y=%2248%22 width=%22160%22 height=%22160%22 rx=%2238%22 transform=%22rotate%2845 128 128%29%22 fill=%22%232962ff%22/%3E%3Cg fill=%22%23fff%22 transform=%22translate%281.0 -4.8%29%22%3E%3Cpath d=%22M72 116 C74 104 86 88 106 88 L182 88 V104 L120 104 C98 104 84 108 72 116 Z%22/%3E%3Crect x=%2297.5%22 y=%2296%22 width=%2212%22 height=%2268%22 rx=%224%22/%3E%3Cellipse cx=%2293%22 cy=%22165%22 rx=%2217%22 ry=%2212.5%22 transform=%22rotate%28-22 93 165%29%22/%3E%3Cpath d=%22M147 96 H163 V137 C163 147 169 151 182 147 C179 162 168 172 156 170 C149 168 147 158 147 146 Z%22/%3E%3C/g%3E%3C/svg%3E">
+<script>
+  // Apply the saved theme before first paint (no flash). Falls back to the system preference.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('pitube-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      try { t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'; } catch (e) { t = 'dark'; }
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #272727;
+    --border: #3d3d3d;
+    --text: #f1f1f1;
+    --muted: #aaa;
+    --red: #2962ff;
+    --red-dark: #1e4fd1;
+    --radius: 8px;
+    --surface3: #3d3d3d;   /* hover on buttons */
+    --panel: #181818;      /* side drawer, save picker */
+    --footer-bg: #111;     /* player bar */
+    --popover: #1e1e1e;    /* volume popup, menus */
+    --thumb-bg: #222;      /* thumbnail placeholder, row hover */
+    --danger-bg: #2a1010;
+    --toast-bg: #323232;
+    --danger-text: #ff6b6b;
+    color-scheme: dark;
+  }
+
+  /* Light theme: not wired to any button yet.
+     To try it: document.documentElement.dataset.theme = 'light'  (remove the attribute for dark). */
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --surface2: #eaeaea;
+    --border: #d0d0d0;
+    --text: #0f0f0f;
+    --muted: #606060;
+    --surface3: #dcdcdc;
+    --panel: #fafafa;
+    --footer-bg: #f2f2f2;
+    --popover: #ffffff;
+    --thumb-bg: #e4e4e4;
+    --danger-bg: #fde8e6;
+    --toast-bg: #323232;
+    --danger-text: #c0392b;
+    color-scheme: light;
+  }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; overflow-x: hidden; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Roboto', Arial, sans-serif; font-size: 14px; min-height: 100vh; }
+
+  /* ── Header ── */
+  header { position: sticky; top: 0; z-index: 100; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; padding: 0 1rem; height: 56px; }
+  .logo { display: flex; align-items: center; gap: 6px; text-decoration: none; color: var(--text); flex-shrink: 0; }
+  .logo svg { display: block; }
+  /* equal-width sides keep the search bar exactly centred on wide screens */
+  .hdr-side { flex: 1 1 0; min-width: 0; display: flex; align-items: center; }
+  .hdr-right { justify-content: flex-end; }
+  .search-bar { flex: 0 1 640px; min-width: 0; display: flex; margin: 0; }
+  .search-bar input { flex: 1; min-width: 0; width: 100%; background: var(--bg); border: 1px solid var(--border); border-right: none; border-radius: var(--radius) 0 0 var(--radius); padding: 0 12px; height: 36px; color: var(--text); font-size: 15px; outline: none; }
+  .search-bar input:focus { border-color: #1c62b9; }
+  .search-bar button { background: var(--surface2); border: 1px solid var(--border); border-radius: 0 var(--radius) var(--radius) 0; padding: 0 14px; height: 36px; cursor: pointer; color: var(--text); font-size: 18px; }
+  .search-bar button:hover { background: var(--surface3); }
+
+
+  /* ── Theme switch (header, right) ── */
+  #btn-theme { flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  #btn-theme:hover { background: var(--surface3); }
+  #btn-theme .ico-sun { display: none; }
+  :root[data-theme="dark"] #btn-theme .ico-sun { display: block; }     /* dark now -> show the sun (switch to light) */
+  :root[data-theme="dark"] #btn-theme .ico-moon { display: none; }
+  body.drawer-open #btn-theme { display: none; }
+
+  /* ── List ── */
+  main { padding: 1rem 1rem 100px; display: flex; align-items: flex-start; gap: 20px; }
+  #results-col { flex: 1; min-width: 0; }
+  #state-msg { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; gap: 12px; color: var(--muted); text-align: center; }
+  #state-msg svg { opacity: .4; }
+  #state-msg .lg-d { fill: var(--muted); }
+  #state-msg .lg-g { fill: var(--bg); }
+  #state-msg p { font-size: 16px; }
+  #grid { display: flex; flex-direction: column; max-width: 1200px; margin: 0 auto; }
+  .card { cursor: pointer; border-radius: var(--radius); overflow: hidden; background: transparent; display: flex; gap: 22px; padding: 14px; align-items: center; }
+  .card:hover { background: var(--surface2); }
+  .card:hover .thumb { filter: brightness(.85); }
+  .thumb-wrap { position: relative; width: 420px; flex-shrink: 0; aspect-ratio: 16/9; background: var(--thumb-bg); overflow: hidden; border-radius: 8px; }
+  .thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .duration-badge { position: absolute; bottom: 8px; right: 10px; background: rgba(0,0,0,.85); color: #fff; font-size: 18px; font-weight: 500; padding: 3px 8px; border-radius: 4px; }
+  .play-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.3); opacity: 0; transition: opacity .15s; }
+  .card:hover .play-overlay { opacity: 1; }
+  .play-overlay svg { filter: drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  .card.playing .thumb-wrap { outline: 2px solid var(--red); }
+  .card-info { display: flex; gap: 18px; min-width: 0; flex: 1; align-items: center; }
+  .card-ch-avatar { width: 60px; height: 60px; border-radius: 50%; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 500; color: var(--muted); flex-shrink: 0; }
+  .card-text { min-width: 0; }
+  .card-title { font-size: 28px; font-weight: 500; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-meta { font-size: 19px; color: var(--muted); margin-top: 8px; }
+  #load-more { display: block; margin: 12px auto 0; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 24px; color: var(--text); font-size: 14px; font-weight: 500; cursor: pointer; }
+  #load-more:hover { background: var(--surface3); }
+  #load-more:disabled { opacity: .5; cursor: default; }
+
+  /* ── Card action buttons ── */
+  .card-actions { position: absolute; top: 6px; right: 6px; display: flex; flex-direction: column; gap: 5px; opacity: 0; transition: opacity .15s; }
+  .card:hover .card-actions { opacity: 1; }
+  .card-actions button { background: rgba(0,0,0,.75); border: 1px solid rgba(255,255,255,.15); border-radius: 8px; color: #fff; font-size: 28px; font-weight: 700; padding: 8px 18px; cursor: pointer; white-space: nowrap; line-height: 1.4; }
+  .card-actions button:hover { background: var(--red); border-color: var(--red); }
+
+  /* ── Drawer ── */
+  #drawer-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 180; }
+  #drawer-overlay.open { display: block; }
+  #drawer { position: fixed; top: 0; right: -420px; width: 400px; max-width: 95vw; height: 100%; height: 100dvh; background: var(--panel); border-left: 1px solid var(--border); z-index: 190; display: flex; flex-direction: column; transition: right .25s ease; padding-bottom: var(--footer-h, 110px); }
+  #drawer.open { right: 0; }
+
+  /* Drawer header */
+  .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .drawer-header h2 { font-size: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  #btn-close-drawer { background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+  #btn-close-drawer:hover { background: var(--surface2); color: var(--text); }
+
+  /* Tabs */
+  .drawer-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .drawer-tab { flex: 1; padding: 10px; text-align: center; font-size: 14px; font-weight: 600; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; background: none; border-top: none; border-left: none; border-right: none; }
+  .drawer-tab.active { color: var(--text); border-bottom-color: var(--red); }
+  .drawer-tab:hover { background: var(--surface2); }
+
+  /* Tab panels */
+  .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+  .tab-panel.active { display: flex; }
+
+  /* Queue panel */
+  #queue-toolbar { display: flex; justify-content: flex-end; padding: 8px 12px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+  #btn-clear-playlist { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 13px; padding: 4px 10px; cursor: pointer; }
+  #btn-clear-playlist:hover { border-color: #c0392b; color: #c0392b; }
+  #playlist-empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+  #playlist-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+
+  /* pl items (queue) */
+  .pl-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; border-radius: 6px; margin: 3px 8px; user-select: none; }
+  .pl-item:hover { background: var(--surface2); }
+  .pl-item.pl-active { background: var(--surface2); outline: 1px solid var(--red); }
+  .pl-item.dragging { opacity: .4; }
+  .pl-drag { color: var(--muted); font-size: 22px; cursor: grab; flex-shrink: 0; }
+  .pl-drag:active { cursor: grabbing; }
+  .pl-rank { font-size: 15px; font-weight: 700; color: var(--muted); min-width: 24px; text-align: center; flex-shrink: 0; }
+  .pl-active .pl-rank { color: var(--red); }
+  .pl-thumb { width: 108px; height: 60px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+  .pl-meta { flex: 1; min-width: 0; }
+  .pl-title { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl-channel { font-size: 13px; color: var(--muted); }
+  .pl-btns { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+  .pl-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 13px; width: 26px; height: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .pl-btn:hover { background: var(--surface2); color: var(--text); }
+  .pl-btn.pl-del:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
+
+  /* Saved playlists panel */
+  #saved-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+  #new-pl-input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 14px; outline: none; }
+  #new-pl-input:focus { border-color: var(--red); }
+  #btn-create-pl { background: var(--red); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 600; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+  #btn-create-pl:hover { background: var(--red-dark); }
+  #saved-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  #saved-empty { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 14px; }
+
+  /* Saved playlist rows */
+  .spl-row { padding: 12px 16px; border-radius: 6px; margin: 3px 8px; cursor: pointer; }
+  .spl-row:hover { background: var(--surface2); }
+  .spl-row.open { background: var(--surface2); }
+  .spl-row-header { display: flex; align-items: center; gap: 10px; }
+  .spl-icon { font-size: 20px; flex-shrink: 0; }
+  .spl-name { flex: 1; font-size: 16px; font-weight: 600; }
+  .spl-count { font-size: 13px; color: var(--muted); }
+  .spl-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .spl-btn { background: none; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 12px; padding: 3px 8px; cursor: pointer; }
+  .spl-btn:hover { background: var(--surface2); color: var(--text); }
+  .spl-btn.del:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
+
+  /* Expanded saved playlist content */
+  .spl-content { display: none; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .spl-row.open .spl-content { display: block; }
+  .spl-play-btns { display: flex; gap: 8px; margin-bottom: 10px; }
+  .spl-play-btns button { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .spl-play-btns button:hover { background: var(--red); border-color: var(--red); }
+  .spl-tracks { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .spl-track { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 4px; }
+  .spl-track:hover { background: var(--thumb-bg); }
+  .spl-track-thumb { width: 64px; height: 36px; border-radius: 3px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+  .spl-track-title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .spl-track-actions { display: none; gap: 4px; flex-shrink: 0; }
+  .spl-track:hover .spl-track-actions { display: flex; }
+  .spl-track-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 11px; font-weight: 600; padding: 3px 7px; cursor: pointer; white-space: nowrap; }
+  .spl-track-btn:hover { background: var(--red); border-color: var(--red); }
+  .spl-track-del { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 3px; flex-shrink: 0; }
+  .spl-track-del:hover { color: #c0392b; background: var(--danger-bg); }
+
+  /* ── Save-to-playlist picker (modal inside drawer) ── */
+  #save-picker { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: var(--footer-h, 110px); background: var(--panel); z-index: 10; flex-direction: column; }
+  #save-picker.open { display: flex; }
+  .picker-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .picker-header h3 { flex: 1; font-size: 17px; font-weight: 600; }
+  #btn-close-picker { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #btn-close-picker:hover { background: var(--surface2); color: var(--text); }
+  .picker-new { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .picker-new input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 14px; outline: none; }
+  .picker-new input:focus { border-color: var(--red); }
+  .picker-new button { background: var(--red); border: none; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 600; padding: 7px 14px; cursor: pointer; }
+  .picker-new button:hover { background: var(--red-dark); }
+  #picker-list { flex: 1; overflow-y: auto; padding: 8px 0; min-height: 0; }
+  .picker-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; border-radius: 6px; margin: 2px 8px; }
+  .picker-item:hover { background: var(--surface2); }
+  .picker-item input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--red); flex-shrink: 0; cursor: pointer; }
+  .picker-item-name { font-size: 15px; font-weight: 500; flex: 1; }
+  .picker-item-count { font-size: 13px; color: var(--muted); }
+  #btn-confirm-save { flex-shrink: 0; margin: 10px 14px; padding: 14px; background: var(--red); border: none; border-radius: var(--radius); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  #btn-confirm-save:hover { background: var(--red-dark); }
+
+  /* ── QR code panel (left of the results, never over them) ── */
+  #logo-img { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  #qr-panel { display: none; }
+  /* Very wide screens: the QR card floats in the empty left margin (it takes no room, so nothing moves when it appears) */
+  #qr-panel.show { display: block; width: 200px; position: fixed; top: 72px; left: 16px; z-index: 50; }
+  @media (min-width: 1560px) { #results-col { max-width: 1040px; margin: 0 auto; } }
+  .qr-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+  .qr-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #qr-label { font-size: 14px; font-weight: 600; }
+  #qr-close { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #qr-close:hover { background: var(--border); color: var(--text); }
+  #qr-img { display: block; width: 100%; aspect-ratio: 1; background: #fff; border-radius: 8px; padding: 4px; }
+  #qr-url { font-size: 13px; color: var(--muted); margin-top: 8px; text-align: center; word-break: break-all; }
+  #qr-err { display: none; font-size: 12px; color: var(--muted); }
+  /* Below 1560px the card would cover the results -> hidden by default, centered pop-up on long-click / right-click (tap outside to close) */
+  @media (max-width: 1559px) {
+    #qr-panel.show { position: fixed; top: 0; right: 0; bottom: 0; left: 0; width: auto; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); z-index: 600; }
+    #qr-panel .qr-card { width: 300px; max-width: 80vw; }
+  }
+
+  /* ── Video (server started with --video) ── */
+  #btn-video { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
+  #btn-video:hover { background: var(--surface3); }
+  /* Multicast: listen on this device */
+  #btn-listen { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; flex-shrink: 0; align-items: center; justify-content: center; }
+  #btn-listen:hover { background: var(--surface3); }
+  #btn-listen.on { background: var(--red); border-color: var(--red); }
+  #btn-listen.blocked { border-color: var(--red); animation: mcpulse 1.2s ease-in-out infinite; }
+  @keyframes mcpulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(41,98,255,.55); } 50% { box-shadow: 0 0 0 8px rgba(41,98,255,0); } }
+  #btn-video.on { background: var(--red); border-color: var(--red); }
+  /* The stage covers everything above the player (header included): the video is drawn as large as
+     possible with its own aspect ratio (object-fit: contain), so it touches the screen edges in one direction. */
+  #video-stage { display: none; position: fixed; top: var(--header-h, 56px); left: 0; right: 0; bottom: var(--footer-h, 110px); background: #000; z-index: 150; align-items: center; justify-content: center; }
+  #video-stage.show { display: flex; }
+  #video-stage:fullscreen, #video-stage:-webkit-full-screen { top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; }
+  #video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+  #video-msg { position: absolute; color: var(--muted); font-size: 15px; pointer-events: none; text-align: center; padding: 0 20px; white-space: pre-line; }
+  #video-msg:empty { display: none; }
+  #video-stage { touch-action: manipulation; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #video-hint { position: absolute; top: 14%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.7); color: #fff; padding: 8px 18px; border-radius: 22px; font-size: 20px; font-weight: 600; pointer-events: none; opacity: 0; transition: opacity .15s; white-space: nowrap; z-index: 2; }
+  #video-hint.show { opacity: 1; }
+  #video-hint.left { left: 22%; } #video-hint.right { left: 78%; }
+  #video-stage.fast::after { content: '\00D7 2  \25B6\25B6'; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); background: rgba(41,98,255,.9); color: #fff; padding: 6px 16px; border-radius: 18px; font-size: 18px; font-weight: 700; pointer-events: none; z-index: 2; }
+  #video-ctrl { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  #video-stage.ctrl #video-ctrl { opacity: 1; pointer-events: auto; }
+  #video-stage:fullscreen:not(.ctrl) { cursor: none; }
+  /* Small player (bottom right) while the user is searching: click it to enlarge again */
+  /* Plain pixel sizes on purpose: min() / calc(var()) were ignored by some browsers, which made it nearly full-size */
+  #video-stage.mini { top: auto; left: auto; right: 16px; bottom: 126px; bottom: calc(var(--footer-h, 110px) + 16px); width: 240px; height: 135px; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.6); overflow: hidden; cursor: pointer; }
+  #video-stage.mini:fullscreen, #video-stage.mini:-webkit-full-screen { border: 0; border-radius: 0; box-shadow: none; }
+  #video-stage.mini #video-ctrl { top: 6px; right: 6px; gap: 6px; }
+  #video-stage.mini .vbtn { width: 32px; height: 32px; }
+  #video-stage.mini .vbtn svg { width: 18px; height: 18px; }
+  #video-stage.mini #video-msg { font-size: 12px; }
+  @media (max-width: 600px) { #video-stage.mini { width: 176px; height: 99px; right: 10px; bottom: 120px; bottom: calc(var(--footer-h, 110px) + 10px); } }
+  /* The small player must not hide the results: leave a gutter for it (wide screens), and room to scroll past it */
+  body.video-mini main { padding-bottom: 280px; padding-bottom: calc(var(--footer-h, 110px) + 170px); }
+  @media (min-width: 900px) and (max-width: 1559px) { body.video-mini #results-col { margin-right: 272px; } }
+  .vbtn { background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.3); color: #fff; border-radius: 8px; width: 44px; height: 44px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .vbtn:hover { background: rgba(255,255,255,.2); }
+  .vbtn svg { width: 24px; height: 24px; fill: currentColor; }
+
+  /* ── Party lock ── */
+  .lock-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  #btn-lock { flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 36px; height: 36px; font-size: 18px; cursor: pointer; color: var(--text); display: flex; align-items: center; justify-content: center; }
+  #btn-lock:hover:not(:disabled) { background: var(--border); }
+  #btn-lock.on { background: var(--red); border-color: var(--red); }
+  #btn-lock:disabled { opacity: .55; cursor: not-allowed; }
+  #lock-label { font-size: 13px; color: var(--muted); line-height: 1.3; }
+  #pin-row { display: none; align-items: center; gap: 8px; margin-top: 8px; }
+  #pin-row.show { display: flex; }
+  #pin-input { flex: 1; min-width: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 8px 10px; font-size: 18px; letter-spacing: 6px; text-align: center; outline: none; }
+  #pin-input:focus { border-color: var(--red); }
+  #pin-cancel { background: none; border: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px 6px; border-radius: 4px; }
+  #pin-cancel:hover { background: var(--border); color: var(--text); }
+  /* Locked + not the master: hide / dim everything except "add to end of queue" and "save to playlist" */
+  body.guest-locked #btn-pause, body.guest-locked #progress, body.guest-locked #btn-vol { opacity: .35; pointer-events: none; }
+  body.guest-locked .pl-btns, body.guest-locked .pl-drag, body.guest-locked #btn-clear-playlist,
+  body.guest-locked .btn-add-next, body.guest-locked .btn-spl-play, body.guest-locked .t-play, body.guest-locked .t-next,
+  body.guest-locked .spl-btn.del, body.guest-locked .spl-track-del { display: none !important; }
+  #toast { position: fixed; left: 50%; bottom: calc(var(--footer-h, 110px) + 16px); transform: translateX(-50%) translateY(10px); background: var(--toast-bg); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 14px; max-width: 90vw; text-align: center; z-index: 700; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Touch / long-press helpers ── */
+  .card, .pl-item, .spl-track { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  .spl-track-more { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 2px 8px; border-radius: 4px; flex-shrink: 0; line-height: 1; }
+  .spl-track-more:hover { color: var(--text); background: var(--surface2); }
+  @media (hover: none) { .spl-track:hover .spl-track-actions { display: none; } }
+  .ctx-btn.danger { color: var(--danger-text); }
+
+  /* ── Party mode badge ── */
+  #party-badge { display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; transition: filter .25s, opacity .25s; background: var(--red); color:#fff; font-size:12px; font-weight:700; padding:2px 8px; border-radius:10px; margin-left:8px; vertical-align:middle; }
+  #party-badge.off { filter: grayscale(1); opacity: .5; }
+  #party-badge:not(.on) .tada { display:none; }
+  #party-badge .tada { display:block; flex-shrink:0; }
+  /* PARTY label: greyed out while the party is off; click = start / stop the party */
+  #party-modal { display: none; position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 450; background: rgba(0,0,0,.55); align-items: center; justify-content: center; padding: 16px; }
+  #party-modal.open { display: flex; }
+  .pm-card { position: relative; width: 340px; max-width: 100%; background: var(--popover); color: var(--text); border: 1px solid var(--border); border-radius: 14px; padding: 22px 20px 18px; box-shadow: 0 12px 40px rgba(0,0,0,.45); text-align: center; }
+  .pm-x { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; }
+  .pm-x:hover { background: var(--surface3); color: var(--text); }
+  .pm-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .pm-title .tada { width: 24px; height: 24px; }
+  .pm-text { color: var(--muted); font-size: 13px; line-height: 1.4; margin-bottom: 14px; }
+  #pm-pin { width: 100%; height: 44px; text-align: center; font-size: 22px; letter-spacing: .4em; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; color: var(--text); outline: none; margin-bottom: 14px; }
+  #pm-pin:focus { border-color: var(--red); }
+  #pm-pin::placeholder { font-size: 14px; letter-spacing: normal; }
+  #pm-go { width: 100%; height: 44px; border: none; border-radius: 10px; background: var(--red); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  #pm-go:hover { background: var(--red-dark); }
+  #pm-go:disabled { opacity: .6; cursor: default; }
+  #party-modal.stop #pm-go { background: #c0392b; }
+  .pm-toggle { display: flex; align-items: center; gap: 12px; text-align: left; margin-bottom: 14px; cursor: pointer; }
+  .pm-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+  .pm-sw { flex: 0 0 auto; width: 40px; height: 22px; border-radius: 11px; background: var(--surface3); position: relative; transition: background .2s; }
+  .pm-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .pm-toggle input:checked + .pm-sw { background: var(--red); }
+  .pm-toggle input:checked + .pm-sw::after { transform: translateX(18px); }
+  .pm-toggle input:focus-visible + .pm-sw { outline: 2px solid var(--red); outline-offset: 2px; }
+  .pm-toggle b { display: block; font-size: 14px; }
+  .pm-toggle small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 2px; }
+  /* Large screens: no dimmed backdrop, a light popover under the header where the QR code sits */
+  @media (min-width: 900px) {
+    #party-modal { background: transparent; }
+    /* same spot as the QR code (sticky, 72px from the top, 16px from the left), whatever the browser does with flex */
+    .pm-card { position: fixed; top: 72px; left: 16px; width: 300px; box-shadow: 0 4px 18px rgba(0,0,0,.18); }
+  }
+
+  /* ── Footer ── */
+  #footer { display: block; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 8px 16px 10px; }
+  .footer-top { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+  #footer-thumb { width: 48px; height: 27px; border-radius: 4px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+  .footer-meta { flex: 1; min-width: 0; }
+  #footer-title { font-size: 18px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #footer-channel { font-size: 15px; color: var(--muted); }
+  #btn-pause { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 56px; height: 56px; flex-shrink: 0; cursor: pointer; color: var(--text); font-size: 26px; display: flex; align-items: center; justify-content: center; }
+  #btn-pause:hover { background: var(--surface3); }
+  #btn-save-footer { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 13px; font-weight: 600; padding: 0 12px; height: 40px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+  #btn-save-footer:hover { background: var(--red); border-color: var(--red); }
+  /* Volume : bouton haut-parleur + popover avec curseur */
+  #vol-wrap { position: relative; flex-shrink: 0; }
+  #btn-vol { background: var(--surface2); border: 1px solid var(--border); border-radius: 50%; width: 48px; height: 48px; cursor: pointer; color: var(--text); font-size: 22px; display: flex; align-items: center; justify-content: center; }
+  #btn-vol:hover { background: var(--surface3); }
+  #vol-pop { display: none; position: absolute; bottom: calc(100% + 12px); right: -8px; max-width: calc(100vw - 16px); background: var(--popover); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; z-index: 300; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+  #vol-pop.open { display: flex; }
+  #volume { -webkit-appearance: none; appearance: none; width: 170px; height: 6px; background: var(--border); border-radius: 3px; cursor: pointer; outline: none; }
+  #volume::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none; }
+  #volume::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--text); border: none; }
+  #vol-pct { font-size: 14px; color: var(--muted); min-width: 40px; text-align: right; }
+  #btn-playlist { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-size: 22px; font-weight: 600; padding: 0 20px; height: 64px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+  #btn-playlist svg { width: 32px; height: 32px; }
+  #btn-playlist:hover { background: var(--surface3); }
+  .footer-progress { display: flex; align-items: center; gap: 8px; }
+  .time { font-size: 16px; color: var(--muted); white-space: nowrap; min-width: 46px; }
+  #progress { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer; accent-color: var(--red); }
+  audio#audio-el { display: none; }
+  #loading-bar { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: var(--footer-bg); border-top: 1px solid var(--border); z-index: 200; padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* ── Mobile ── */
+  @media (max-width: 600px) {
+    /* Header */
+    header { padding: 0 8px; gap: 8px; height: 50px; }
+    .hdr-side { flex: 0 0 auto; }
+    .search-bar { flex: 1 1 0; }
+    .search-bar input { font-size: 16px; }   /* < 16px makes iOS zoom in on focus */
+    #btn-theme { width: 34px; height: 34px; }
+    #logo-img { height: 28px; }
+    #party-badge { font-size: 10px; padding: 1px 5px; }
+
+    /* Cards : miniature en haut, texte en dessous */
+    .card { flex-direction: column; gap: 8px; padding: 10px 8px; align-items: flex-start; }
+    .thumb-wrap { width: 100%; aspect-ratio: 16/9; }
+    .duration-badge { font-size: 13px; }
+    .card-actions { display: none; } /* hidden — shown via long-press menu instead */
+    .card-info { gap: 8px; width: 100%; }
+    .card-ch-avatar { width: 36px; height: 36px; font-size: 15px; flex-shrink: 0; }
+    .card-title { font-size: 16px; }
+    .card-meta { font-size: 13px; }
+    .play-overlay { opacity: 0; } /* keep hover-only on mobile, tap shows anyway */
+
+    /* Footer : compact 2-lignes */
+    #footer { padding: 6px 8px 6px; }
+    .footer-top { gap: 6px; flex-wrap: wrap; }
+    #footer-thumb { width: 40px; height: 22px; }
+    #footer-title { font-size: 13px; }
+    #footer-channel { font-size: 11px; }
+    #btn-pause { width: 40px; height: 40px; font-size: 18px; }
+    #btn-save-footer { font-size: 12px; padding: 0 8px; height: 34px; }
+    #btn-vol { width: 40px; height: 40px; font-size: 18px; }
+    #btn-listen { width: 40px; height: 40px; font-size: 18px; }
+    #btn-video { width: 40px; height: 40px; font-size: 18px; }
+    #btn-playlist { font-size: 16px; padding: 0 10px; height: 44px; }
+    #btn-playlist svg { width: 20px; height: 20px; }
+    .footer-progress { gap: 4px; }
+    .time { font-size: 12px; min-width: 32px; }
+
+    /* Drawer plein écran sur mobile */
+    #drawer { width: 100%; right: -100%; }
+    #drawer.open { right: 0; }
+    .pl-thumb { width: 72px; height: 40px; }
+    .pl-title { font-size: 13px; }
+    .pl-channel { font-size: 11px; }
+
+    /* Main padding for compact footer */
+    main { padding-bottom: 120px; }
+  }
+
+  /* ── Long-press context menu (mobile) ── */
+  #ctx-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 500;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  #ctx-overlay.open { display: flex; }
+  #ctx-menu {
+    background: var(--popover);
+    border-radius: 16px 16px 0 0;
+    width: 100%;
+    max-width: 480px;
+    padding: 8px 0 24px;
+    animation: slideUp .2s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  #ctx-thumb-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 6px;
+  }
+  #ctx-thumb { width: 72px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--surface2); }
+  #ctx-title { font-size: 14px; font-weight: 600; line-height: 1.3; }
+  .ctx-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 14px 20px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 16px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .ctx-btn:hover { background: var(--surface2); }
+  .ctx-btn-icon { font-size: 20px; width: 28px; text-align: center; flex-shrink: 0; }
+  #ctx-cancel {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 10px 16px 0;
+    padding: 14px;
+    background: var(--surface2);
+    border: none;
+    border-radius: 12px;
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hdr-side hdr-left">
+  <a class="logo" href="#">
+    <img id="logo-img" src="assets/logo.svg" alt="PiTube" style="height:40px;width:auto;display:block;">
+  </a>
+  <span id="party-badge" class="off" role="button" tabindex="0" title="Start the party"><span id="party-badge-text">PARTY</span><svg class="tada" viewBox="0 0 36 36" width="14" height="14" aria-hidden="true"><path d="M3.5 32.5 11 11.5l13.5 13.5z" fill="#FFB02E"/><path d="M11 11.5l-3.2 9 7.7 7.7 9-3.2z" fill="#F4900C" opacity=".55"/><circle cx="25" cy="7" r="2.3" fill="#2962ff"/><circle cx="31" cy="15" r="2" fill="#E91E63"/><rect x="21" y="3" width="3.6" height="3.6" rx=".8" fill="#FFD43B" transform="rotate(25 22.8 4.8)"/><rect x="29" y="21" width="3.6" height="3.6" rx=".8" fill="#4CAF50" transform="rotate(-20 30.8 22.8)"/><path d="M16 9c0-3 3-4.5 4.5-2.2M27 12.5c3-1 5 .8 4.2 3" fill="none" stroke="#E91E63" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+  </div>
+  <form class="search-bar" id="search-form" action="javascript:void(0)">
+    <input type="search" id="search-input" placeholder="Search..." autocomplete="off" />
+    <button type="submit" aria-label="Search">&#128269;</button>
+  </form>
+  <div class="hdr-side hdr-right">
+  <button id="btn-theme" type="button" aria-label="Switch theme" title="Switch theme">
+    <svg class="ico-sun" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>
+    <svg class="ico-moon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M21 14.5A9 9 0 0 1 9.5 3a9 9 0 1 0 11.5 11.5z"/></svg>
+  </button>
+  </div>
+</header>
+
+<main>
+  <aside id="qr-panel">
+    <div class="qr-card">
+      <div class="qr-head">
+        <span id="qr-label">Scan to join</span>
+        <button id="qr-close" title="Hide">&#10005;</button>
+      </div>
+      <img id="qr-img" alt="QR code" draggable="false">
+      <div id="qr-err">QR unavailable: run <b>pip install segno</b> then restart the server.</div>
+      <div id="qr-url"></div>
+      <div class="lock-row">
+        <button id="btn-lock" title="Lock the party">&#128275;</button>
+        <span id="lock-label">Party open</span>
+      </div>
+      <div id="pin-row">
+        <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="PIN">
+        <button id="pin-cancel" title="Cancel">&#10005;</button>
+      </div>
+    </div>
+  </aside>
+  <div id="results-col">
+  <div id="state-msg">
+    <svg width="96" height="96" viewBox="0 0 256 256" aria-hidden="true">
+      <rect class="lg-d" x="48" y="48" width="160" height="160" rx="38" transform="rotate(45 128 128)"/>
+      <g class="lg-g" transform="translate(1.0 -4.8)"><path d="M72 116 C74 104 86 88 106 88 L182 88 V104 L120 104 C98 104 84 108 72 116 Z"/><rect x="97.5" y="96" width="12" height="68" rx="4"/><ellipse cx="93" cy="165" rx="17" ry="12.5" transform="rotate(-22 93 165)"/><path d="M147 96 H163 V137 C163 147 169 151 182 147 C179 162 168 172 156 170 C149 168 147 158 147 146 Z"/></g>
+    </svg>
+    <p>Search something to get started</p>
+  </div>
+  <div id="grid" style="display:none"></div>
+  <button id="load-more" style="display:none">Load more</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<!-- Footer -->
+<div id="video-stage">
+  <video id="video" muted playsinline preload="auto"></video>
+  <div id="video-msg"></div>
+  <div id="video-hint"></div>
+  <div id="video-ctrl">
+    <button class="vbtn" id="video-size" title="Small player"></button>
+    <button class="vbtn" id="video-fs" title="Fullscreen (F)"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg></button>
+    <button class="vbtn" id="video-close" title="Hide the video">&#10005;</button>
+  </div>
+</div>
+
+<div id="footer">
+  <div class="footer-top">
+    <img id="footer-thumb" src="" alt="">
+    <div class="footer-meta">
+      <div id="footer-title">-</div>
+      <div id="footer-channel"></div>
+    </div>
+    <button id="btn-save-footer" title="Save to playlist">+ Save</button>
+    <button id="btn-pause" title="Play / Pause (Space)">&#9208;</button>
+    <div id="vol-wrap">
+      <button id="btn-vol" title="Volume">&#128266;</button>
+      <div id="vol-pop">
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
+        <span id="vol-pct">100%</span>
+      </div>
+    </div>
+    <button id="btn-listen" title="Listen on this device" style="display:none">&#127911;</button>
+    <button id="btn-video" title="Show the video (F = fullscreen)" style="display:none">&#127916;</button>
+    <button id="btn-playlist" title="Queue &amp; Playlists">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>
+      <span id="pl-count">0</span>
+    </button>
+  </div>
+  <div class="footer-progress">
+    <span class="time" id="time-cur">0:00</span>
+    <input type="range" id="progress" min="0" max="100" value="0" step="0.1">
+    <span class="time" id="time-dur">0:00</span>
+  </div>
+</div>
+
+<div id="loading-bar">Loading audio stream...</div>
+<audio id="audio-el"></audio>
+
+<!-- Drawer overlay -->
+<div id="drawer-overlay"></div>
+
+<!-- Main drawer -->
+<div id="drawer">
+  <div class="drawer-header">
+    <h2>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3v10.55A4 4 0 1 0 11 17V7h4V3z"/></svg>
+      Queue &amp; Playlists
+    </h2>
+    <button id="btn-close-drawer">&#10005;</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="drawer-tabs">
+    <button class="drawer-tab active" data-tab="queue">Queue</button>
+    <button class="drawer-tab" data-tab="saved">Saved</button>
+  </div>
+
+  <!-- Queue panel -->
+  <div class="tab-panel active" id="tab-queue">
+    <div id="queue-toolbar">
+      <button id="btn-clear-playlist">Clear queue</button>
+    </div>
+    <div id="playlist-empty">Queue is empty.<br>Use +1 Next or + Queue on a video.</div>
+    <div id="playlist-list"></div>
+  </div>
+
+  <!-- Saved playlists panel -->
+  <div class="tab-panel" id="tab-saved">
+    <div id="saved-toolbar">
+      <input type="text" id="new-pl-input" placeholder="New playlist name..." maxlength="60">
+      <button id="btn-create-pl">Create</button>
+    </div>
+    <div id="saved-empty">No saved playlists yet.</div>
+    <div id="saved-list"></div>
+  </div>
+
+  <!-- Save-to-playlist picker (slides over drawer) -->
+  <div id="save-picker">
+    <div class="picker-header">
+      <h3>Save to playlist</h3>
+      <button id="btn-close-picker">&#10005;</button>
+    </div>
+    <div class="picker-new">
+      <input type="text" id="picker-new-input" placeholder="New playlist name..." maxlength="60">
+      <button id="btn-picker-create">Create</button>
+    </div>
+    <div id="picker-list"></div>
+    <button id="btn-confirm-save">Done</button>
+  </div>
+</div>
+
+<!-- Start / stop the party (click on the logo) -->
+<div id="party-modal" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+  <div class="pm-card">
+    <button class="pm-x" id="pm-x" title="Cancel" aria-label="Cancel">&#10005;</button>
+    <div class="pm-title" id="pm-title"></div>
+    <div class="pm-text" id="pm-text"></div>
+    <label class="pm-toggle" id="pm-mc-row"><input type="checkbox" id="pm-mc"><span class="pm-sw"></span><span><b>Multicast</b><small>Also play the music on the other devices, not only on the Pi (kept in sync).</small></span></label>
+    <input id="pm-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    <button id="pm-go"></button>
+  </div>
+</div>
+
+<!-- Long-press context menu -->
+<div id="ctx-overlay">
+  <div id="ctx-menu">
+    <div id="ctx-thumb-row">
+      <img id="ctx-thumb" src="" alt="">
+      <div id="ctx-title"></div>
+    </div>
+    <div id="ctx-actions"></div>
+    <button id="ctx-cancel">Cancel</button>
+  </div>
+</div>
+
+<script>
+var API = window.location.origin;
+var PARTY = false; // set after /mode check
+
+// ── DOM refs ──
+var searchForm    = document.getElementById('search-form');
+var searchInput   = document.getElementById('search-input');
+var grid          = document.getElementById('grid');
+var stateMsg      = document.getElementById('state-msg');
+var footer        = document.getElementById('footer');
+var loadingBar    = document.getElementById('loading-bar');
+var audio         = document.getElementById('audio-el');
+var btnPause      = document.getElementById('btn-pause');
+var progress      = document.getElementById('progress');
+var timeCur       = document.getElementById('time-cur');
+var timeDur       = document.getElementById('time-dur');
+var footerThumb   = document.getElementById('footer-thumb');
+var footerTitle   = document.getElementById('footer-title');
+var footerChan    = document.getElementById('footer-channel');
+var volume        = document.getElementById('volume');
+
+// Keep --footer-h in sync so the drawer / save picker never end up under the footer
+function syncFooterH() {
+  document.documentElement.style.setProperty('--footer-h', document.getElementById('footer').offsetHeight + 'px');
+  document.documentElement.style.setProperty('--header-h', document.querySelector('header').offsetHeight + 'px');
+}
+syncFooterH();
+if (window.ResizeObserver) { var _ro = new ResizeObserver(syncFooterH); _ro.observe(document.getElementById('footer')); _ro.observe(document.querySelector('header')); }
+window.addEventListener('resize', syncFooterH);
+var loadMoreBtn   = document.getElementById('load-more');
+var btnPlaylist   = document.getElementById('btn-playlist');
+var plCount       = document.getElementById('pl-count');
+var drawer        = document.getElementById('drawer');
+var drawerOverlay = document.getElementById('drawer-overlay');
+var btnCloseDrawer= document.getElementById('btn-close-drawer');
+var playlistList  = document.getElementById('playlist-list');
+var playlistEmpty = document.getElementById('playlist-empty');
+var savedList     = document.getElementById('saved-list');
+var savedEmpty    = document.getElementById('saved-empty');
+var btnCreatePl   = document.getElementById('btn-create-pl');
+var newPlInput    = document.getElementById('new-pl-input');
+var savePicker    = document.getElementById('save-picker');
+var btnSaveFooter = document.getElementById('btn-save-footer');
+var btnClosePicker= document.getElementById('btn-close-picker');
+var pickerList    = document.getElementById('picker-list');
+var btnConfirmSave= document.getElementById('btn-confirm-save');
+var pickerNewInput= document.getElementById('picker-new-input');
+var btnPickerCreate=document.getElementById('btn-picker-create');
+
+// ── State ──
+var PAGE_SIZE    = 5;
+var results      = [];
+var currentQuery = '';
+var currentN     = PAGE_SIZE;
+var playlist     = [];       // queue
+var plCurrentIdx = -1;
+var savedPlaylists = {};     // { name: [item, ...] }
+var pickerItem   = null;     // item being saved
+var openSplName  = null;     // which saved pl row is expanded
+
+// ── Helpers ──
+function fmtTime(s) {
+  if (!s || isNaN(s)) return '0:00';
+  var m = Math.floor(s / 60);
+  var sec = Math.floor(s % 60);
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+function fmtViews(n) {
+  if (!n) return '';
+  if (n >= 1e9) return (n/1e9).toFixed(1) + 'B views';
+  if (n >= 1e6) return (n/1e6).toFixed(1) + 'M views';
+  if (n >= 1e3) return (n/1e3).toFixed(0) + 'k views';
+  return n + ' views';
+}
+// Everything that comes from the network (titles, channels, playlist names...) is untrusted:
+// it is escaped before going into innerHTML.
+function esc(x) {
+  return String(x == null ? '' : x).replace(/[&<>"'`]/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' }[c];
+  });
+}
+function initials(name) { return (name || '?').charAt(0).toUpperCase(); }
+function makeItem(v) { return { id: v.id, title: v.title, channel: v.channel, thumbnail: v.thumbnail, duration: v.duration }; }
+
+// ── Saved playlists persistence ──
+function loadSavedPlaylists() {
+  fetch(API + '/playlists')
+    .then(function(r) { return r.json(); })
+    .then(function(data) { applySavedPlaylists(data || {}); })
+    .catch(function() {});
+}
+
+// The server is the single source of truth: show exactly what it has
+function applySavedPlaylists(data) {
+  savedPlaylists = data;
+  renderSaved();
+  if (savePicker.classList.contains('open')) syncPicker();
+}
+
+// One change at a time, applied by the server on its current copy (so devices never overwrite each other)
+function playlistOp(body) {
+  return fetch(API + '/playlists/op', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) {
+      return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; });
+    })
+    .then(function(x) {
+      if (x.status === 200 && x.d.playlists) { applySavedPlaylists(x.d.playlists); }
+      else {
+        if (x.status === 403) toast('Party locked: you can only add tracks to playlists');
+        else if (x.status === 404) toast('That playlist no longer exists');
+        loadSavedPlaylists();      // undo the optimistic change
+      }
+      return x;
+    })
+    .catch(function() { toast('Could not reach the server'); loadSavedPlaylists(); });
+}
+
+// ── Tabs ──
+document.querySelectorAll('.drawer-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.drawer-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    if (tab.dataset.tab === 'saved') renderSaved();
+    if (tab.dataset.tab === 'queue') renderPlaylist();
+  });
+});
+
+// ── Search ──
+searchForm.addEventListener('submit', function(e) {
+  e.preventDefault();
+  var q = searchInput.value.trim();
+  if (!q) return;
+  currentQuery = q;
+  currentN = PAGE_SIZE;
+  stateMsg.innerHTML = '<p style="color:var(--muted)">Searching...</p>';
+  stateMsg.style.display = 'flex';
+  grid.style.display = 'none';
+  grid.innerHTML = '';
+  loadMoreBtn.style.display = 'none';
+  runSearch();
+});
+
+function runSearch() {
+  if (VIDEO && _vidShown && !_vidMini) setMini(true);     // results must stay readable: the video becomes a small player
+  fetch(API + '/search?q=' + encodeURIComponent(currentQuery) + '&n=' + currentN)
+    .then(function(r) { return r.json(); })
+    .then(function(data) { results = data.results || []; renderGrid(); })
+    .catch(function(err) {
+      stateMsg.innerHTML = '<p style="color:var(--danger-text)">Error: could not reach the server.<br><small>' + esc(err.message) + '</small></p>';
+    });
+}
+
+loadMoreBtn.addEventListener('click', function() {
+  loadMoreBtn.disabled = true;
+  loadMoreBtn.textContent = 'Loading...';
+  currentN += PAGE_SIZE;
+  fetch(API + '/search?q=' + encodeURIComponent(currentQuery) + '&n=' + currentN)
+    .then(function(r) { return r.json(); })
+    .then(function(data) { results = data.results || []; renderGrid(); })
+    .catch(function() {})
+    .then(function() { loadMoreBtn.disabled = false; loadMoreBtn.textContent = 'Load more'; });
+});
+
+// ── Render search results ──
+function renderGrid() {
+  stateMsg.style.display = 'none';
+  grid.style.display = 'flex';
+  grid.innerHTML = '';
+  loadMoreBtn.style.display = results.length > 0 ? 'block' : 'none';
+
+  results.forEach(function(v, i) {
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.idx = i;
+    card.style.position = 'relative';
+    card.innerHTML =
+      '<div class="thumb-wrap">' +
+        '<img class="thumb" src="' + esc(v.thumbnail) + '" alt="' + esc(v.title) + '" loading="lazy">' +
+        (v.duration ? '<span class="duration-badge">' + esc(fmtTime(v.duration)) + '</span>' : '') +
+        '<div class="play-overlay">' +
+          '<svg width="84" height="84" viewBox="0 0 48 48">' +
+            '<circle cx="24" cy="24" r="24" fill="rgba(0,0,0,.6)"/>' +
+            '<polygon points="19,14 19,34 36,24" fill="white"/>' +
+          '</svg>' +
+        '</div>' +
+        '<div class="card-actions">' +
+          '<button class="btn-add-next" title="Play next">+1 Next</button>' +
+          '<button class="btn-add-end"  title="Add to queue">+ Queue</button>' +
+          '<button class="btn-save-card" title="Save to playlist">+ Save</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card-info">' +
+        '<div class="card-ch-avatar">' + esc(initials(v.channel)) + '</div>' +
+        '<div class="card-text">' +
+          '<div class="card-title">' + esc(v.title) + '</div>' +
+          '<div class="card-meta">' + esc(v.channel) + (v.views ? ' &middot; ' + esc(fmtViews(v.views)) : '') + '</div>' +
+        '</div>' +
+      '</div>';
+
+    card.addEventListener('click', function(e) {
+      if (e.target.closest('.card-actions')) return;
+      if (lpRecent()) return; // long press / right click already handled
+      playFromSearch(i);
+    });
+    card.querySelector('.btn-add-next').addEventListener('click', function(e) { e.stopPropagation(); addToQueue(v, 'next'); });
+    card.querySelector('.btn-add-end').addEventListener('click', function(e) { e.stopPropagation(); addToQueue(v, 'end'); });
+    card.querySelector('.btn-save-card').addEventListener('click', function(e) { e.stopPropagation(); openSavePicker(makeItem(v)); });
+    attachLongPress(card, function() { return cardMenu(v, i); });
+    grid.appendChild(card);
+  });
+}
+
+// ── Queue management ──
+function addToQueue(v, where) {
+  var item = makeItem(v);
+  if (where === 'next') {
+    var insertAt = plCurrentIdx >= 0 ? plCurrentIdx + 1 : playlist.length;
+    playlist.splice(insertAt, 0, item);
+  } else {
+    playlist.push(item);
+  }
+  updatePlCount();
+  renderPlaylist();
+  btnPlaylist.style.background = 'var(--red)';
+  setTimeout(function() { btnPlaylist.style.background = ''; }, 300);
+}
+
+function updatePlCount() { plCount.textContent = playlist.length; }
+
+function renderPlaylist() {
+  playlistList.innerHTML = '';
+  playlistEmpty.style.display = playlist.length === 0 ? 'block' : 'none';
+  playlist.forEach(function(item, i) {
+    var el = document.createElement('div');
+    el.className = 'pl-item' + (i === plCurrentIdx ? ' pl-active' : '');
+    el.dataset.idx = i;
+    el.draggable = window.matchMedia ? window.matchMedia('(pointer: fine)').matches : true; // touch: no native drag (it hijacks long-press)
+    var rankLabel = i === plCurrentIdx ? '&#9654;' : (i + 1);
+    el.innerHTML =
+      '<span class="pl-drag" title="Drag to reorder">&#10783;</span>' +
+      '<span class="pl-rank">' + rankLabel + '</span>' +
+      '<img class="pl-thumb" src="' + esc(item.thumbnail) + '" alt="">' +
+      '<div class="pl-meta">' +
+        '<div class="pl-title">' + esc(item.title) + '</div>' +
+        '<div class="pl-channel">' + esc(item.channel) + (item.duration ? ' &middot; ' + esc(fmtTime(item.duration)) : '') + '</div>' +
+      '</div>' +
+      '<div class="pl-btns">' +
+        '<button class="pl-btn" data-action="up" title="Move up">&#8593;</button>' +
+        '<button class="pl-btn" data-action="down" title="Move down">&#8595;</button>' +
+        '<button class="pl-btn pl-del" data-action="del" title="Remove">&#10005;</button>' +
+      '</div>';
+
+    el.addEventListener('click', function(e) {
+      if (e.target.closest('.pl-btns') || e.target.closest('.pl-drag')) return;
+      if (lpRecent()) return;
+      playFromPlaylist(i);
+    });
+    attachLongPress(el, function() { return queueMenu(item, i); });
+    el.querySelectorAll('.pl-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var action = btn.dataset.action;
+        if (action === 'up'   && i > 0)                   plMove(i, i - 1);
+        if (action === 'down' && i < playlist.length - 1) plMove(i, i + 1);
+        if (action === 'del')                              plDelete(i);
+      });
+    });
+    el.addEventListener('dragstart', function(e) { e.dataTransfer.setData('text/plain', i); el.classList.add('dragging'); });
+    el.addEventListener('dragend',   function()  { el.classList.remove('dragging'); });
+    el.addEventListener('dragover',  function(e) { e.preventDefault(); });
+    el.addEventListener('drop', function(e) {
+      e.preventDefault();
+      var from = parseInt(e.dataTransfer.getData('text/plain'));
+      if (from !== i) plMove(from, i);
+    });
+    playlistList.appendChild(el);
+  });
+}
+
+function plMove(from, to) {
+  var item = playlist.splice(from, 1)[0];
+  playlist.splice(to, 0, item);
+  if (plCurrentIdx === from) plCurrentIdx = to;
+  else if (plCurrentIdx > from && plCurrentIdx <= to) plCurrentIdx--;
+  else if (plCurrentIdx < from && plCurrentIdx >= to) plCurrentIdx++;
+  renderPlaylist();
+}
+function plDelete(i) {
+  playlist.splice(i, 1);
+  if (plCurrentIdx === i) plCurrentIdx = -1;
+  else if (plCurrentIdx > i) plCurrentIdx--;
+  updatePlCount();
+  renderPlaylist();
+}
+
+document.getElementById('btn-clear-playlist').addEventListener('click', function() {
+  if (PARTY) return;
+  playlist = []; plCurrentIdx = -1; updatePlCount(); renderPlaylist();
+});
+
+// ── Saved playlists ──
+function renderSaved() {
+  savedList.innerHTML = '';
+  var names = Object.keys(savedPlaylists);
+  savedEmpty.style.display = names.length === 0 ? 'block' : 'none';
+  names.forEach(function(name) {
+    var tracks = savedPlaylists[name];
+    var row = document.createElement('div');
+    row.className = 'spl-row' + (openSplName === name ? ' open' : '');
+    row.innerHTML =
+      '<div class="spl-row-header">' +
+        '<span class="spl-icon">&#9654;</span>' +
+        '<span class="spl-name">' + esc(name) + '</span>' +
+        '<span class="spl-count">' + tracks.length + ' track' + (tracks.length !== 1 ? 's' : '') + '</span>' +
+        '<div class="spl-row-actions">' +
+          '<button class="spl-btn del" data-name="' + esc(name) + '">Delete</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="spl-content">' +
+        '<div class="spl-play-btns">' +
+          '<button class="btn-spl-play" data-name="' + esc(name) + '">&#9654; Play</button>' +
+          '<button class="btn-spl-queue" data-name="' + esc(name) + '">+ Add to Queue</button>' +
+        '</div>' +
+        '<ul class="spl-tracks">' +
+          tracks.map(function(t, ti) {
+            return '<li class="spl-track" data-pl="' + esc(name) + '" data-idx="' + ti + '">' +
+              '<img class="spl-track-thumb" src="' + esc(t.thumbnail) + '" alt="">' +
+              '<span class="spl-track-title">' + esc(t.title) + '</span>' +
+              '<div class="spl-track-actions">' +
+                '<button class="spl-track-btn t-play" title="Play now">&#9654;</button>' +
+                '<button class="spl-track-btn t-next" title="Play next">+1</button>' +
+                '<button class="spl-track-btn t-queue" title="Add to queue">+ Q</button>' +
+              '</div>' +
+              '<button class="spl-track-more" title="More actions">&#8943;</button>' +
+              '<button class="spl-track-del" data-pl="' + esc(name) + '" data-idx="' + ti + '" title="Remove">&#10005;</button>' +
+            '</li>';
+          }).join('') +
+        '</ul>' +
+      '</div>';
+
+    // toggle expand
+    row.querySelector('.spl-row-header').addEventListener('click', function(e) {
+      if (e.target.closest('.spl-row-actions')) return;
+      openSplName = openSplName === name ? null : name;
+      renderSaved();
+    });
+
+    // delete playlist
+    row.querySelector('.spl-btn.del').addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (!confirm('Delete playlist "' + name + '"?')) return;
+      delete savedPlaylists[name];
+      if (openSplName === name) openSplName = null;
+      playlistOp({ op: 'delete', name: name });
+      renderSaved();
+    });
+
+    // play entire playlist (replaces queue from pos 0, starts playing)
+    var btnPlay = row.querySelector('.btn-spl-play');
+    if (btnPlay) btnPlay.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var tracks = savedPlaylists[name];
+      if (!tracks || tracks.length === 0) return;
+      if (PARTY) {
+        if (guestBlocked()) return;
+        userOpensVideo(makeItem(tracks[0]));
+        sendCmd({ cmd: 'play_list', tracks: tracks.map(function(t) { return makeItem(t); }) });
+      } else {
+        playlist = tracks.map(function(t) { return makeItem(t); });
+        plCurrentIdx = 0;
+        updatePlCount();
+        renderPlaylist();
+        playFromPlaylist(0);
+      }
+      // switch to queue tab
+      document.querySelector('[data-tab="queue"]').click();
+    });
+
+    // add to queue
+    var btnQ = row.querySelector('.btn-spl-queue');
+    if (btnQ) btnQ.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var tracks = savedPlaylists[name];
+      if (!tracks) return;
+      if (PARTY) {
+        sendCmd({ cmd: 'add_many', tracks: tracks.map(function(t) { return makeItem(t); }) });
+      } else {
+        tracks.forEach(function(t) { playlist.push(makeItem(t)); });
+        updatePlCount();
+        renderPlaylist();
+      }
+      document.querySelector('[data-tab="queue"]').click();
+    });
+
+    // per-track action buttons
+    row.querySelectorAll('.spl-track').forEach(function(li) {
+      var pl  = li.dataset.pl;
+      var idx = parseInt(li.dataset.idx);
+      var t   = savedPlaylists[pl] && savedPlaylists[pl][idx];
+      if (!t) return;
+
+      var btnPlay = li.querySelector('.t-play');
+      var btnNext = li.querySelector('.t-next');
+      var btnQ    = li.querySelector('.t-queue');
+      var btnMore = li.querySelector('.spl-track-more');
+      if (btnMore) btnMore.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openCtxMenu(t, savedTrackMenu(pl, idx).actions);
+      });
+      attachLongPress(li, function() { return savedTrackMenu(pl, idx); });
+
+      if (btnPlay) btnPlay.addEventListener('click', function(e) {
+        e.stopPropagation();
+        playTrackNow(t);
+      });
+      if (btnNext) btnNext.addEventListener('click', function(e) {
+        e.stopPropagation();
+        addToQueue(t, 'next');
+      });
+      if (btnQ) btnQ.addEventListener('click', function(e) {
+        e.stopPropagation();
+        addToQueue(t, 'end');
+      });
+    });
+
+    // remove individual track
+    row.querySelectorAll('.spl-track-del').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var pl = btn.dataset.pl;
+        var idx = parseInt(btn.dataset.idx);
+        var removed = savedPlaylists[pl].splice(idx, 1)[0];
+        if (removed) playlistOp({ op: 'remove_track', name: pl, id: removed.id });
+        renderSaved();
+      });
+    });
+
+    savedList.appendChild(row);
+  });
+}
+
+// Play one track right now (both modes)
+function playTrackNow(t) {
+  if (PARTY) {
+    if (guestBlocked()) return;
+    userOpensVideo(makeItem(t));
+    sendCmd({ cmd: 'play', track: makeItem(t) });
+  } else {
+    userOpensVideo(makeItem(t));
+    var at = plCurrentIdx >= 0 ? plCurrentIdx + 1 : 0;       // right after the current track
+    playlist.splice(at, 0, makeItem(t));
+    plCurrentIdx = at;
+    updatePlCount(); renderPlaylist();
+    startAudio(playlist[at]);
+  }
+  document.querySelector('[data-tab="queue"]').click();
+}
+
+// Create new saved playlist
+btnCreatePl.addEventListener('click', function() {
+  var name = newPlInput.value.trim();
+  if (!name) return;
+  if (savedPlaylists[name]) { alert('A playlist with this name already exists.'); return; }
+  savedPlaylists[name] = [];
+  newPlInput.value = '';
+  playlistOp({ op: 'create', name: name });
+  renderSaved();
+});
+newPlInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') btnCreatePl.click(); });
+
+// ── Save-to-playlist picker ──
+function openSavePicker(item) {
+  pickerItem = item;
+  pickerNewInput.value = '';
+  renderPickerList();
+  savePicker.classList.add('open');
+  if (!drawer.classList.contains('open')) openDrawer();
+}
+
+function closeSavePicker() { savePicker.classList.remove('open'); }
+
+function renderPickerList() {
+  pickerList.innerHTML = '';
+  var names = Object.keys(savedPlaylists);
+  if (names.length === 0) {
+    pickerList.innerHTML = '<div style="padding:30px;text-align:center;color:var(--muted)">No playlists yet. Create one above.</div>';
+    return;
+  }
+  names.forEach(function(name) {
+    var row = document.createElement('div');
+    row.className = 'picker-item';
+    row.dataset.name = name;
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = savedPlaylists[name].some(function(t) { return t.id === pickerItem.id; });
+    var label = document.createElement('span');
+    label.className = 'picker-item-name';
+    label.textContent = name;
+    var count = document.createElement('span');
+    count.className = 'picker-item-count';
+    count.textContent = savedPlaylists[name].length;
+    row.appendChild(cb); row.appendChild(label); row.appendChild(count);
+
+    // Tapping anywhere on the row adds / removes the track immediately (no hidden confirm button needed)
+    row.addEventListener('click', function(e) {
+      if (e.target !== cb) cb.checked = !cb.checked;
+      var list = savedPlaylists[name];
+      var inList = list.some(function(t) { return t.id === pickerItem.id; });
+      if (cb.checked && !inList) {
+        list.push(pickerItem);
+        playlistOp({ op: 'add_track', name: name, track: pickerItem });
+      } else if (!cb.checked && inList) {
+        savedPlaylists[name] = list.filter(function(t) { return t.id !== pickerItem.id; });
+        playlistOp({ op: 'remove_track', name: name, id: pickerItem.id });
+      }
+      count.textContent = savedPlaylists[name].length;
+      renderSaved();
+    });
+    pickerList.appendChild(row);
+  });
+}
+
+// Update the open picker in place when the server's playlists changed under it
+function syncPicker() {
+  var names = Object.keys(savedPlaylists);
+  var rows  = pickerList.querySelectorAll('.picker-item');
+  var same  = rows.length === names.length && names.every(function(n, i) { return rows[i].dataset.name === n; });
+  if (!same) { renderPickerList(); return; }
+  rows.forEach(function(row) {
+    var list = savedPlaylists[row.dataset.name];
+    row.querySelector('input').checked = list.some(function(t) { return t.id === pickerItem.id; });
+    row.querySelector('.picker-item-count').textContent = list.length;
+  });
+}
+
+btnClosePicker.addEventListener('click', closeSavePicker);
+
+btnPickerCreate.addEventListener('click', function() {
+  var name = pickerNewInput.value.trim();
+  if (!name) return;
+  if (savedPlaylists[name]) { alert('A playlist with this name already exists.'); return; }
+  savedPlaylists[name] = [];
+  pickerNewInput.value = '';
+  playlistOp({ op: 'create', name: name });
+  renderPickerList();
+});
+pickerNewInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') btnPickerCreate.click(); });
+
+btnConfirmSave.addEventListener('click', closeSavePicker);
+
+// btnSaveFooter is wired once after mode detection (see init section)
+
+// ── Audio playback ──
+function playFromSearch(idx) {
+  var v = results[idx];
+  var item = makeItem(v);
+  userOpensVideo(item);
+  var at = plCurrentIdx >= 0 ? plCurrentIdx + 1 : 0;       // right after the current track
+  if (plCurrentIdx >= 0 && playlist[plCurrentIdx] && playlist[plCurrentIdx].id === item.id) {
+    at = plCurrentIdx;                                       // already the current one: just restart it
+  } else {
+    playlist.splice(at, 0, item);
+    updatePlCount();
+  }
+  plCurrentIdx = at;
+  document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('playing'); });
+  var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
+  if (activeCard) activeCard.classList.add('playing');
+  renderPlaylist();
+  startAudio(playlist[at]);
+}
+
+function playFromPlaylist(idx, auto) {      // auto = the previous track just ended (not a choice of the user)
+  if (idx < 0 || idx >= playlist.length) return;
+  if (!auto) userOpensVideo(playlist[idx]);
+  plCurrentIdx = idx;
+  renderPlaylist();
+  startAudio(playlist[idx]);
+}
+
+var _audioReq = 0;
+function startAudio(v) {
+  videoTrackChanged(v.id);
+  footerThumb.src = v.thumbnail;
+  footerTitle.textContent = v.title;
+  footerChan.textContent  = v.channel;
+  loadingBar.style.display = 'block';
+  audio.pause();
+  audio.removeAttribute('src'); audio.load();    // (not src = '': that fires an "error" event, which used to start the track a second time)
+  var req = ++_audioReq;                          // an answer that arrives after a newer request is ignored
+
+  fetch(API + '/audio-url?id=' + v.id)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (req !== _audioReq) return null;
+      if (data.error) throw new Error(data.error);
+      if (data.thumbnail) footerThumb.src = data.thumbnail;
+      if (data.title)     footerTitle.textContent = data.title;
+      if (data.channel)   footerChan.textContent  = data.channel;
+      audio.src = data.url;
+      audio.load();
+      return audio.play();
+    })
+    .then(function() {
+      if (req === _audioReq) loadingBar.style.display = 'none';
+    })
+    .catch(function(err) {
+      if (req !== _audioReq) return;
+      loadingBar.style.display = 'none';
+      alert('Could not load audio: ' + err.message);
+    });
+}
+
+audio.addEventListener('ended', function() {
+  var next = plCurrentIdx + 1;
+  if (next < playlist.length) playFromPlaylist(next, true);
+});
+
+var audioRetried = false;
+audio.addEventListener('error', function() {
+  if (!audio.getAttribute('src')) return;         // emptied on purpose, not a real failure
+  if (!audioRetried && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) {
+    audioRetried = true;
+    startAudio(playlist[plCurrentIdx]);
+  } else { audioRetried = false; }
+});
+audio.addEventListener('playing', function() { audioRetried = false; });
+
+// ── Long-press / right-click context menu ──
+var ctxOverlay = document.getElementById('ctx-overlay');
+var ctxThumb   = document.getElementById('ctx-thumb');
+var ctxTitle   = document.getElementById('ctx-title');
+var ctxActions = document.getElementById('ctx-actions');
+var _lpAt      = 0;   // timestamp of the last long-press / right-click (used to swallow the click that follows)
+var _ctxOpenedAt = 0;
+
+function lpRecent() { return Date.now() - _lpAt < 700; }
+
+// actions: [{ icon, label, run, danger }]
+function openCtxMenu(item, actions) {
+  ctxThumb.src = item.thumbnail || '';
+  ctxTitle.textContent = item.title || '';
+  ctxActions.innerHTML = '';
+  actions = actions.filter(function(a) { return !(a.master && guestLocked()); });
+  actions.forEach(function(a) {
+    var b = document.createElement('button');
+    b.className = 'ctx-btn' + (a.danger ? ' danger' : '');
+    var ic = document.createElement('span');
+    ic.className = 'ctx-btn-icon';
+    ic.textContent = a.icon;
+    b.appendChild(ic);
+    b.appendChild(document.createTextNode(' ' + a.label));
+    b.addEventListener('click', function() {
+      if (Date.now() - _ctxOpenedAt < 350) return; // finger release right after the long-press
+      closeCtxMenu();
+      a.run();
+    });
+    ctxActions.appendChild(b);
+  });
+  _ctxOpenedAt = Date.now();
+  ctxOverlay.classList.add('open');
+}
+function closeCtxMenu() {
+  ctxOverlay.classList.remove('open');
+}
+
+// Close on backdrop tap
+ctxOverlay.addEventListener('click', function(e) {
+  if (e.target === ctxOverlay && Date.now() - _ctxOpenedAt > 350) closeCtxMenu();
+});
+document.getElementById('ctx-cancel').addEventListener('click', closeCtxMenu);
+
+// Android back button closes menu
+window.addEventListener('popstate', function() {
+  if (ctxOverlay.classList.contains('open')) {
+    closeCtxMenu();
+  }
+});
+
+// Menus per context
+function cardMenu(v, idx) {
+  return { item: v, actions: [
+    { icon: '\u25B6', master: true, label: 'Play now',         run: function() { playFromSearch(idx); } },
+    { icon: '+1',      master: true, label: 'Play next',        run: function() { addToQueue(v, 'next'); } },
+    { icon: '+',       label: 'Add to queue',     run: function() { addToQueue(v, 'end'); } },
+    { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(v)); } }
+  ]};
+}
+
+function queuePlayNext(i) {
+  var c = plCurrentIdx;
+  if (i === c) return;
+  var to = c < 0 ? 0 : (i > c ? c + 1 : c);
+  if (to !== i) plMove(i, to);
+}
+function queueMenu(item, i) {
+  return { item: item, actions: [
+    { icon: '\u25B6', master: true, label: 'Play now',         run: function() { playFromPlaylist(i); } },
+    { icon: '+1',      master: true, label: 'Play next',        run: function() { queuePlayNext(i); } },
+    { icon: '\u2605', label: 'Save to playlist', run: function() { openSavePicker(makeItem(item)); } },
+    { icon: '\u2715', master: true, label: 'Remove from queue', danger: true, run: function() { plDelete(i); } }
+  ]};
+}
+
+function savedTrackMenu(pl, ti) {
+  var t = savedPlaylists[pl] && savedPlaylists[pl][ti];
+  if (!t) return null;
+  return { item: t, actions: [
+    { icon: '\u25B6', master: true, label: 'Play now',     run: function() { playTrackNow(t); } },
+    { icon: '+1',      master: true, label: 'Play next',    run: function() { addToQueue(t, 'next'); } },
+    { icon: '+',       label: 'Add to queue', run: function() { addToQueue(t, 'end'); } },
+    { icon: '\u2605', label: 'Save to another playlist', run: function() { openSavePicker(makeItem(t)); } },
+    { icon: '\u2715', master: true, label: 'Remove from this playlist', danger: true, run: function() {
+        savedPlaylists[pl].splice(ti, 1);
+        playlistOp({ op: 'remove_track', name: pl, id: t.id });
+        renderSaved();
+    } }
+  ]};
+}
+
+// Low-level long-press: touch hold (500 ms) + right-click, optionally mouse hold too.
+// fn() is called once per gesture (Android fires both a timer and a contextmenu event: de-duplicated).
+function onLongPress(el, fn, opts) {
+  var timer = null, sx = 0, sy = 0, last = 0;
+  function cancel() { if (timer) { clearTimeout(timer); timer = null; } }
+  function trigger() {
+    var n = Date.now();
+    if (n - last < 800) return;
+    last = n; _lpAt = n;
+    fn();
+  }
+  function fire() {
+    timer = null;
+    if (navigator.vibrate) { try { navigator.vibrate(40); } catch (err) {} }
+    trigger();
+  }
+  el.addEventListener('touchstart', function(e) {
+    cancel();
+    if (e.touches.length !== 1) return;
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    timer = setTimeout(fire, 500);
+  }, { passive: true });
+  el.addEventListener('touchmove', function(e) {
+    var t = e.touches[0];
+    if (Math.abs(t.clientX - sx) > 10 || Math.abs(t.clientY - sy) > 10) cancel(); // scrolling
+  }, { passive: true });
+  el.addEventListener('touchend',    cancel);
+  el.addEventListener('touchcancel', cancel);
+  el.addEventListener('contextmenu', function(e) {   // right-click on desktop, long-press on Android Chrome
+    e.preventDefault();
+    cancel();
+    trigger();
+  });
+  if (opts && opts.mouse) {                           // "long click" with a mouse
+    el.addEventListener('mousedown', function(e) { if (e.button === 0) { cancel(); timer = setTimeout(fire, 500); } });
+    el.addEventListener('mouseup',    cancel);
+    el.addEventListener('mouseleave', cancel);
+  }
+}
+
+// Long-press / right-click -> context menu. getMenu() -> { item, actions } | null
+function attachLongPress(el, getMenu) {
+  onLongPress(el, function() {
+    var m = getMenu();
+    if (m) openCtxMenu(m.item, m.actions);
+  });
+}
+
+// Push a history state so popstate fires on back
+function pushCtxHistory() {
+  history.pushState({ ctx: true }, '');
+}
+
+// ── Pause button icon — single source of truth ──
+function setPauseIcon(playing) {
+  btnPause.innerHTML = playing ? '&#9208;' : '&#9654;';
+}
+
+// ── Controls (normal mode) ──
+function togglePause() {
+  if (!audio.src) return;
+  if (audio.paused) {
+    audio.play().then(function() { setPauseIcon(true); }).catch(function() { setPauseIcon(false); });
+  } else {
+    audio.pause();
+    setPauseIcon(false);
+  }
+}
+var _pauseHandler = togglePause;
+btnPause.addEventListener('click', function() { _pauseHandler(); });
+
+// Sync icon with actual audio state (handles errors, external changes)
+audio.addEventListener('playing', function() { if (!PARTY) setPauseIcon(true); });
+audio.addEventListener('pause',   function() { if (!PARTY) setPauseIcon(false); });
+audio.addEventListener('ended',   function() { if (!PARTY) setPauseIcon(false); });
+audio.addEventListener('error',   function() { if (!PARTY) setPauseIcon(false); });
+audio.addEventListener('waiting', function() { if (!PARTY) setPauseIcon(false); });
+
+audio.addEventListener('timeupdate', function() {
+  if (PARTY) return;
+  if (!audio.duration) return;
+  progress.value = (audio.currentTime / audio.duration) * 100;
+  timeCur.textContent = fmtTime(audio.currentTime);
+  timeDur.textContent = fmtTime(audio.duration);
+});
+progress.addEventListener('input', function() {
+  if (PARTY) return;
+  if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
+});
+// ── Volume (speaker button opens a slider popover) ──
+var btnVol  = document.getElementById('btn-vol');
+var volPop  = document.getElementById('vol-pop');
+var volPct  = document.getElementById('vol-pct');
+var _volTouchedAt = 0;
+var _volSendTimer = null;
+
+function volIcon(v) {
+  return v <= 0 ? '\uD83D\uDD07' : v < 0.34 ? '\uD83D\uDD08' : v < 0.67 ? '\uD83D\uDD09' : '\uD83D\uDD0A';
+}
+var _vol = 1;     // exact current volume (the slider snaps its value to its step)
+function setVolumeUI(v) {
+  _vol = v;
+  volume.value = v;
+  volPct.textContent = Math.round(v * 100) + '%';
+  btnVol.textContent = volIcon(v);
+}
+function applyVolume(v) {
+  if (PARTY && guestLocked()) return;
+  v = Math.max(0, Math.min(1, parseFloat(v) || 0));
+  _volTouchedAt = Date.now();
+  setVolumeUI(v);
+  if (PARTY) {
+    // volume lives on the Pi (mpv): send it, lightly throttled
+    clearTimeout(_volSendTimer);
+    _volSendTimer = setTimeout(function() {
+      fetch(API + '/command', {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({ cmd: 'volume', value: Math.round(v * 100) })
+      }).catch(function() {});
+    }, 60);
+  } else {
+    audio.volume = v;
+    try { localStorage.setItem('pitube-volume', String(v)); } catch (e) {}
+  }
+}
+volume.addEventListener('input', function() { applyVolume(volume.value); });
+btnVol.addEventListener('click', function(e) { e.stopPropagation(); volPop.classList.toggle('open'); });
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('vol-wrap').contains(e.target)) volPop.classList.remove('open');
+});
+(function() {
+  var saved = 1;
+  try { var sv = parseFloat(localStorage.getItem('pitube-volume')); if (!isNaN(sv)) saved = sv; } catch (e) {}
+  setVolumeUI(saved);
+  audio.volume = saved;   // overridden by the server value in party mode
+})();
+
+// ── QR code panel (party mode only): shown by default on wide screens, long-click on the logo toggles it ──
+var qrPanel = document.getElementById('qr-panel');
+var qrImg   = document.getElementById('qr-img');
+var qrUrlEl = document.getElementById('qr-url');
+var qrErrEl = document.getElementById('qr-err');
+var _qrLoaded = false;
+
+function qrWide() { return window.matchMedia ? window.matchMedia('(min-width: 1560px)').matches : true; }
+function setQr(show) {
+  qrPanel.classList.toggle('show', show);
+  if (show && !_qrLoaded) { _qrLoaded = true; qrImg.src = API + '/qr.svg'; }
+}
+function toggleQr() { setQr(!qrPanel.classList.contains('show')); }
+
+qrImg.addEventListener('error', function() { qrImg.style.display = 'none'; qrErrEl.style.display = 'block'; });
+document.getElementById('qr-close').addEventListener('click', function() { setQr(false); });
+qrPanel.addEventListener('click', function(e) { if (e.target === qrPanel) setQr(false); }); // tap on the pop-up backdrop
+
+var _logoLink = document.getElementById('logo-img').parentNode;
+
+// ── Party lock: whoever locks becomes the "master"; the server enforces it ──
+var CLIENT_ID = (function() {
+  var id = null;
+  try { id = localStorage.getItem('pitube-client-id'); } catch (e) {}
+  if (!id) {
+    var a = new Uint32Array(4);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+    else for (var i = 0; i < 4; i++) a[i] = Math.floor(Math.random() * 4294967296);
+    id = Array.prototype.map.call(a, function(n) { return n.toString(36); }).join('') + Date.now().toString(36);
+    try { localStorage.setItem('pitube-client-id', id); } catch (e) {}
+  }
+  return id;
+})();
+function apiHeaders() { return { 'Content-Type': 'application/json', 'X-Client-Id': CLIENT_ID }; }
+
+var _locked = false, _isMaster = false, _lockSeen = null;
+var btnLock   = document.getElementById('btn-lock');
+var lockLabel = document.getElementById('lock-label');
+var _toastTimer = null;
+
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { t.classList.remove('show'); }, 2600);
+}
+function guestLocked() { return PARTY && _locked && !_isMaster; }
+function guestBlocked() {
+  if (!guestLocked()) return false;
+  toast('Party locked: you can only add tracks to the end of the queue or to a playlist');
+  return true;
+}
+function renderLock() {
+  document.body.classList.toggle('guest-locked', guestLocked());
+  btnLock.textContent = _locked ? '\uD83D\uDD12' : '\uD83D\uDD13';   // lock / unlocked padlock
+  btnLock.classList.toggle('on', _locked);
+  btnLock.disabled = _locked && !_isMaster && !PIN_REQUIRED;
+  btnLock.title = !_locked ? 'Lock the party: others can only add to the end of the queue'
+                : _isMaster ? 'Unlock the party' : PIN_REQUIRED ? 'Locked: enter the PIN to unlock' : 'Locked by the master';
+  lockLabel.textContent = !_locked ? 'Party open'
+                : _isMaster ? 'Locked: tap to unlock' : PIN_REQUIRED ? 'Locked: PIN needed to unlock' : 'Locked by the master';
+  document.getElementById('party-badge-text').textContent = _locked ? 'PARTY \uD83D\uDD12' : 'PARTY';
+}
+function refreshLock() {
+  if (!PARTY) return;
+  fetch(API + '/lock', { headers: apiHeaders() })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { _locked = !!d.locked; _isMaster = !!d.master; renderLock(); })
+    .catch(function() {});
+}
+
+// Optional 4-digit PIN (server started with:  --party -pin 1234)
+var PIN_REQUIRED = false;
+var pinRow   = document.getElementById('pin-row');
+var pinInput = document.getElementById('pin-input');
+var _pinBusy = false;
+
+function openPin()  { pinRow.classList.add('show'); pinInput.value = ''; pinInput.focus(); }
+function closePin() { pinRow.classList.remove('show'); pinInput.value = ''; }
+
+function sendLock(cmd, pin) {
+  var body = { cmd: cmd };
+  if (pin != null) body.pin = pin;
+  _pinBusy = true;
+  fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) {
+      return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; });
+    })
+    .then(function(x) {
+      _pinBusy = false;
+      if (x.status === 200) closePin();
+      else if (x.d.error === 'bad_pin') { toast('Wrong PIN'); pinInput.value = ''; pinInput.focus(); }
+      else if (x.status === 429) { toast('Too many attempts, try again in ' + (x.d.retry_in || 60) + ' s'); pinInput.value = ''; }
+      else if (x.status === 403) toast('Only the master can unlock the party');
+      refreshLock();
+    })
+    .catch(function() { _pinBusy = false; });
+}
+
+btnLock.addEventListener('click', function() {
+  if (!PARTY) return;
+  if (PIN_REQUIRED) {                       // ask for the code first
+    if (pinRow.classList.contains('show')) closePin(); else openPin();
+  } else {
+    sendLock(_locked ? 'unlock' : 'lock');
+  }
+});
+pinInput.addEventListener('input', function() {
+  pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 4);
+  if (pinInput.value.length === 4 && !_pinBusy) sendLock(_locked ? 'unlock' : 'lock', pinInput.value);
+});
+pinInput.addEventListener('keydown', function(e) { if (e.key === 'Escape') closePin(); });
+document.getElementById('pin-cancel').addEventListener('click', closePin);
+
+document.addEventListener('keydown', function(e) {
+  if (e.code !== 'Space') return;
+  var tag = document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  e.preventDefault();
+  _pauseHandler();
+});
+
+
+// ── Multicast: this device plays the music too, in sync with the Pi (party started with --multicast) ──
+var MULTICAST = false;                      // from the party state
+var mcAudio   = new Audio();
+mcAudio.preload = 'auto';
+var btnListen = document.getElementById('btn-listen');
+var _mcWant = false;                        // this device listens
+try { _mcWant = localStorage.getItem('pitube-listen') === '1'; } catch (e) {}
+var _mcTrackId = null, _mcCurId = null, _mcReq = 0, _mcBlocked = false;
+// a silent clip: playing it inside a tap unlocks the audio element on iOS / Safari
+var MC_SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+function mcAvailable() { return PARTY && MULTICAST && !IS_LOCAL; }   // the Pi itself already plays through mpv
+function renderListen() {
+  btnListen.style.display = mcAvailable() ? 'flex' : 'none';
+  btnListen.classList.toggle('on', _mcWant && !_mcBlocked);
+  btnListen.classList.toggle('blocked', _mcWant && _mcBlocked);
+  btnListen.title = !_mcWant ? 'Listen on this device (multicast)'
+                  : _mcBlocked ? 'Tap to start the sound on this device'
+                  : 'Listening on this device: tap to stop';
+}
+function mcStop() {
+  _mcReq++; _mcTrackId = null;
+  mcAudio.pause(); mcAudio.removeAttribute('src'); mcAudio.load();
+}
+function mcLoad(id, attempt) {
+  var req = ++_mcReq;
+  mcAudio.pause(); mcAudio.removeAttribute('src'); mcAudio.load();
+  _mcTrackId = id;
+  if (!id) return;
+  attempt = attempt || 0;
+  function again() { if (attempt < 3) setTimeout(function() { if (req === _mcReq) mcLoad(id, attempt + 1); }, 2000); }
+  fetch(API + '/party-audio?id=' + encodeURIComponent(id))
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(x) {
+      if (req !== _mcReq) return;
+      if (x.ok && x.d.url) { mcAudio.src = x.d.url; mcSync(); }
+      else again();
+    })
+    .catch(again);
+}
+// Keep this device's audio on the party clock. Gentle on purpose: every jump on a streamed file can
+// cause a stutter, so this only trusts a median of recent measurements, nudges the speed for small
+// gaps, jumps only for a big, lasting one, and never touches anything while the buffer is empty.
+var _mcDrifts = [], _mcAligned = false, _mcSeeded = false, _mcLastSeek = 0, _mcNudge = 1, _mcPlayingBefore = false;
+function mcMedian(a) { var b = a.slice().sort(function(x, y) { return x - y; }); return b[Math.floor(b.length / 2)]; }
+function mcResetDrift() { _mcDrifts = []; _mcAligned = false; _mcSeeded = false; _mcNudge = 1; }
+function mcSetRate(r) { if (Math.abs(mcAudio.playbackRate - r) > 0.001) mcAudio.playbackRate = r; }
+function mcSync() {
+  if (!mcAvailable() || !_mcWant) return;
+  if (_mcCurId !== _mcTrackId) { mcResetDrift(); mcLoad(_mcCurId); }
+  if (!mcAudio.getAttribute('src') || mcAudio.readyState < 1) return;
+  var c = videoClock(), t = c.t;
+  if (isFinite(mcAudio.duration)) t = Math.min(t, mcAudio.duration);
+  var vol = Math.max(0, Math.min(1, _vol));
+  if (Math.abs(mcAudio.volume - vol) > 0.005) mcAudio.volume = vol;
+  var base = _srv.speed || 1;
+  if (!c.playing) {
+    _mcPlayingBefore = false;
+    if (!mcAudio.paused) mcAudio.pause();
+    if (Math.abs(mcAudio.currentTime - t) > 0.5) mcAudio.currentTime = t;
+    mcSetRate(base);
+    return;
+  }
+  if (!_mcPlayingBefore) { _mcPlayingBefore = true; _mcDrifts = []; }   // restarted: old measurements are void
+  if (!_mcSeeded) {                              // before the first sound: start AT the party clock, not at 0
+    _mcSeeded = true;                            // (loading took a few seconds: playing from 0 then jumping sounds like a restart)
+    if (t > 0.5) { try { mcAudio.currentTime = t + 0.2; } catch (e) {} _mcLastSeek = Date.now(); }
+  }
+  if (mcAudio.paused) {
+    var pr = mcAudio.play();
+    if (pr && pr.then) pr.then(function() { if (_mcBlocked) { _mcBlocked = false; renderListen(); } })
+                         .catch(function(e) { if (e && e.name === 'NotAllowedError' && !_mcBlocked) { _mcBlocked = true; renderListen(); } });
+  }
+  if (mcAudio.readyState < 3) return;          // still buffering: do not make it worse by jumping around
+  var now = Date.now(), drift = mcAudio.currentTime - t;     // + = this device is ahead
+  if (!_mcAligned) {                            // first alignment of a track: one jump, if needed
+    _mcAligned = true;
+    if (Math.abs(drift) > 0.4) { mcAudio.currentTime = t + 0.2; _mcLastSeek = now; _mcDrifts = []; }
+    mcSetRate(base);
+    return;
+  }
+  _mcDrifts.push(drift); if (_mcDrifts.length > 7) _mcDrifts.shift();
+  if (_mcDrifts.length < 4) return;
+  var m = mcMedian(_mcDrifts), a = Math.abs(m);
+  if (a > 1.5 * Math.max(1, base) && now - _mcLastSeek > 5000) {   // lost for good: jump (rarely)
+    mcAudio.currentTime = t + 0.3; _mcLastSeek = now; _mcDrifts = []; _mcNudge = 1;
+  } else if (a > 0.3) _mcNudge = m > 0 ? 0.97 : 1.03;              // small gap: change the speed a little
+  else if (a < 0.1) _mcNudge = 1;                                  // back in step (hysteresis: no chattering)
+  mcSetRate(base * _mcNudge);
+}
+function mcSetWant(on) {
+  _mcWant = on;
+  try { localStorage.setItem('pitube-listen', on ? '1' : '0'); } catch (e) {}
+  if (on) {
+    mcAudio.src = MC_SILENT;                // inside the tap: unlocks the element
+    var pr = mcAudio.play(); if (pr && pr.catch) pr.catch(function() {});
+    _mcTrackId = null; _mcBlocked = false; mcResetDrift();
+    mcSync();
+  } else { mcStop(); _mcBlocked = false; }
+  renderListen();
+}
+btnListen.addEventListener('click', function() { mcSetWant(!_mcWant); });
+// the first tap anywhere unlocks the sound when the browser refused to autoplay
+['pointerdown', 'keydown'].forEach(function(ev) {
+  document.addEventListener(ev, function() { if (_mcBlocked && _mcWant) mcSync(); }, true);
+});
+setInterval(mcSync, 500);
+
+// ── Start / stop the party live (click on the logo) ──
+var pmEl = document.getElementById('party-modal');
+var pmPin = document.getElementById('pm-pin');
+var pmGo  = document.getElementById('pm-go');
+var _pmBusy = false;
+var TADA_SVG = document.querySelector('#party-badge .tada').outerHTML;
+
+function openPartyModal() {
+  var stopping = PARTY;
+  pmEl.classList.toggle('stop', stopping);
+  document.getElementById('pm-title').innerHTML = stopping ? 'Stop the party' : 'Start the party ' + TADA_SVG;
+  document.getElementById('pm-text').textContent = stopping
+    ? 'The music stops on the Pi and the queue is cleared. Everybody goes back to normal mode.'
+    : 'The music plays on the Pi and everybody shares the same queue. You can choose an optional 4-digit PIN that will be needed to lock, unlock or stop the party.';
+  pmGo.textContent = stopping ? 'Stop' : 'Launch!';
+  pmGo.disabled = false;
+  pmPin.value = '';
+  document.getElementById('pm-mc').checked = false;
+  document.getElementById('pm-mc-row').style.display = stopping ? 'none' : 'flex';
+  var needPin = !stopping || PIN_REQUIRED;
+  pmPin.style.display = needPin ? 'block' : 'none';
+  pmPin.placeholder = stopping ? 'PIN' : 'PIN (optional)';
+  pmEl.classList.add('open');
+  if (needPin) pmPin.focus(); else pmGo.focus();
+}
+function closePartyModal() { pmEl.classList.remove('open'); pmPin.value = ''; }
+
+function submitPartyModal() {
+  if (_pmBusy) return;
+  var stopping = PARTY, body = {};
+  var pin = pmPin.value;
+  if (stopping && PIN_REQUIRED) {
+    if (!/^[0-9]{4}$/.test(pin)) { toast('Enter the 4-digit PIN'); pmPin.focus(); return; }
+    body.pin = pin;
+  } else if (!stopping && pin) {
+    if (!/^[0-9]{4}$/.test(pin)) { toast('The PIN must be 4 digits (or leave it empty)'); pmPin.focus(); return; }
+    body.pin = pin;
+  }
+  if (!stopping) body.multicast = document.getElementById('pm-mc').checked;
+  _pmBusy = true; pmGo.disabled = true;
+  fetch(API + (stopping ? '/party/stop' : '/party/start'), { method: 'POST', headers: apiHeaders(), body: JSON.stringify(body) })
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { status: r.status, d: d }; }); })
+    .then(function(x) {
+      _pmBusy = false; pmGo.disabled = false;
+      if (x.status === 200 || x.d.error === 'already_on' || x.d.error === 'already_off') { location.reload(); return; }
+      if (x.d.error === 'bad_pin') { toast('Wrong PIN'); pmPin.value = ''; pmPin.focus(); }
+      else if (x.status === 429) { toast('Too many attempts, try again in ' + (x.d.retry_in || 60) + ' s'); pmPin.value = ''; }
+      else toast('Could not ' + (stopping ? 'stop' : 'start') + ' the party');
+    })
+    .catch(function() { _pmBusy = false; pmGo.disabled = false; toast('Server unreachable'); });
+}
+pmGo.addEventListener('click', submitPartyModal);
+pmPin.addEventListener('input', function() { pmPin.value = pmPin.value.replace(/\D/g, '').slice(0, 4); });
+pmPin.addEventListener('keydown', function(e) { if (e.key === 'Enter') submitPartyModal(); });
+document.getElementById('pm-x').addEventListener('click', closePartyModal);
+pmEl.addEventListener('click', function(e) { if (e.target === pmEl) closePartyModal(); });
+var _badge = document.getElementById('party-badge');
+_badge.addEventListener('click', openPartyModal);
+_badge.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPartyModal(); } });
+
+// Another device started / stopped the party: follow it (the page reloads in the right mode)
+setInterval(function() {
+  if (document.hidden || _pmBusy) return;
+  fetch(API + '/mode').then(function(r) { return r.json(); }).then(function(d) {
+    if (!!d.party !== !!PARTY) { location.reload(); return; }
+    PIN_REQUIRED = !!d.pin;
+  }).catch(function() {});
+}, 4000);
+
+// ── Video (server started with --video) ──
+// The video is a MUTED companion of the audio, kept in sync with it:
+//   normal mode: follows the <audio> element        party mode: follows the position the server broadcasts
+// (in party mode the sound comes from mpv on the Pi, so every screen shows the video silently)
+var VIDEO     = false;
+var stage     = document.getElementById('video-stage');
+var vid       = document.getElementById('video');
+var vidMsgEl  = document.getElementById('video-msg');
+var btnVideo  = document.getElementById('btn-video');
+var _vidShown = false, _vidTrackId = null, _vidReq = 0, _ctrlTimer = null;
+var _srv      = { pos: 0, playing: false, at: 0, speed: 1, dur: 0 };   // last party clock received from the server
+var _seekHoldUntil = 0;   // right after a local seek, ignore the (older) position the server may still send
+
+function setVidMsg(t) { vidMsgEl.textContent = t || ''; }
+function clearVideoEl() { vid.pause(); vid.removeAttribute('src'); vid.load(); }
+
+function videoClock() {
+  if (PARTY) return { t: _srv.pos + (_srv.playing ? (Date.now() - _srv.at) / 1000 * (_srv.speed || 1) : 0), playing: _srv.playing };
+  return { t: audio.currentTime || 0, playing: !audio.paused && !audio.ended && audio.readyState >= 3 };
+}
+// How to react to the gap between the video and the master clock (seconds, + = video is ahead)
+function videoSpeed() { return PARTY ? (_srv.speed || 1) : (audio.playbackRate || 1); }
+function videoDriftAction(drift, seekAt) {
+  var a = Math.abs(drift);
+  if (a > (seekAt || 0.8))  return 'seek';
+  if (a > 0.15) return drift > 0 ? 'slower' : 'faster';   // small gap: nudge the speed, no visible jump
+  return 'ok';
+}
+function syncVideo() {
+  if (!VIDEO || !_vidShown || !vid.getAttribute('src') || vid.readyState < 1) return;
+  var c = videoClock(), t = c.t;
+  if (isFinite(vid.duration)) t = Math.min(t, vid.duration);
+  if (!c.playing) {
+    if (!vid.paused) vid.pause();
+    if (Math.abs(vid.currentTime - t) > 0.3) vid.currentTime = t;
+    vid.playbackRate = videoSpeed();
+    return;
+  }
+  var base = videoSpeed();            // x2 while the user holds the video: the picture follows the music's speed
+  var act = videoDriftAction(vid.currentTime - t, base > 1 ? 3 : 0.8);   // at x2 a slow device would seek again and again: be patient
+  if (act === 'seek') { vid.currentTime = t; vid.playbackRate = base; }
+  else vid.playbackRate = base * (act === 'faster' ? 1.05 : act === 'slower' ? 0.95 : 1);
+  if (vid.paused) { var pr = vid.play(); if (pr && pr.catch) pr.catch(function() {}); }
+}
+
+var VIDEO_RETRIES = 2, VIDEO_RETRY_MS = 1500;
+var _vidCur = { id: null, req: 0, attempt: 0 };
+var MEDIA_REASON = { 1: 'loading was aborted', 2: 'network error while loading the video',
+                     3: 'the video could not be decoded', 4: 'this video format is not supported here (or the link expired)' };
+
+function loadVideo(id) {
+  var req = ++_vidReq;                  // a newer request makes older answers obsolete
+  clearVideoEl();
+  _vidCur = { id: id, req: req, attempt: 0 };
+  if (!id) { setVidMsg('Nothing playing'); return; }
+  fetchVideoUrl(_vidCur);
+}
+function fetchVideoUrl(cur) {
+  setVidMsg(cur.attempt ? 'Retrying the video\u2026 (' + cur.attempt + '/' + VIDEO_RETRIES + ')' : 'Loading video\u2026');
+  fetch(API + '/video-url?id=' + encodeURIComponent(cur.id) + (cur.attempt ? '&fresh=1' : ''))
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { ok: r.ok, d: d }; }); })
+    .then(function(x) {
+      if (cur.req !== _vidReq) return;
+      if (x.ok && x.d.url) { vid.muted = true; vid.src = x.d.url; return; }
+      videoFailed(cur, x.d && x.d.error);
+    })
+    .catch(function() { videoFailed(cur, 'cannot reach the server'); });
+}
+function videoFailed(cur, reason) {
+  if (cur.req !== _vidReq) return;
+  clearVideoEl();
+  if (cur.attempt < VIDEO_RETRIES) {    // YouTube hiccups are usually brief: try again with a fresh link
+    cur.attempt++;
+    setVidMsg('Retrying the video\u2026 (' + cur.attempt + '/' + VIDEO_RETRIES + ')');
+    setTimeout(function() { if (cur.req === _vidReq) fetchVideoUrl(cur); }, VIDEO_RETRY_MS);
+    return;
+  }
+  setVidMsg('Video unavailable' + (reason ? '\n' + reason : ''));
+}
+function videoTrackChanged(id) {
+  if (id === _vidTrackId) return;
+  _vidTrackId = id;
+  if (_vidShown) loadVideo(id);         // hidden video = no download, no decoding
+}
+var _vidMini = false;
+var sizeBtn = document.getElementById('video-size');
+var ICON_MINI = '<svg viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg>';
+var ICON_BIG  = '<svg viewBox="0 0 24 24"><path d="M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z"/></svg>';
+function setMini(on) {
+  _vidMini = !!on;
+  stage.classList.toggle('mini', _vidMini);
+  document.body.classList.toggle('video-mini', _vidMini);
+  sizeBtn.innerHTML = _vidMini ? ICON_BIG : ICON_MINI;
+  sizeBtn.title = _vidMini ? 'Enlarge the video' : 'Small player';
+}
+setMini(false);
+
+function showVideo(show) {
+  setMini(false);
+  _vidShown = show;
+  stage.classList.toggle('show', show);
+  btnVideo.classList.toggle('on', show);
+  if (show) { loadVideo(_vidTrackId); pokeVideoCtrl(); }
+  else { _vidReq++; clearVideoEl(); setVidMsg(''); if (fsElement()) exitFs(); }
+}
+
+vid.addEventListener('loadedmetadata', function() {
+  var c = videoClock();
+  try { vid.currentTime = isFinite(vid.duration) ? Math.min(c.t, vid.duration) : c.t; } catch (e) {}
+  syncVideo();
+});
+vid.addEventListener('canplay', function() { setVidMsg(''); syncVideo(); });
+vid.addEventListener('playing', function() { setVidMsg(''); });
+vid.addEventListener('error', function() {
+  if (!vid.getAttribute('src') || _vidCur.req !== _vidReq) return;     // an old / emptied source: ignore
+  videoFailed(_vidCur, MEDIA_REASON[vid.error && vid.error.code] || 'the video could not be played');
+});
+['play', 'pause', 'seeked', 'ended', 'timeupdate', 'waiting', 'playing', 'canplay'].forEach(function(ev) {   // normal mode: the audio is the clock
+  audio.addEventListener(ev, function() { if (!PARTY) syncVideo(); });
+});
+
+// Fullscreen: the stage (video only) goes fullscreen; button, F key or double-click
+function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function exitFs()    { var f = document.exitFullscreen || document.webkitExitFullscreen; if (f) f.call(document); }
+function toggleFullscreen() {
+  if (!_vidShown) showVideo(true);
+  if (_vidMini) setMini(false);          // fullscreen always means the big picture
+  if (fsElement()) { exitFs(); return; }
+  var req = stage.requestFullscreen || stage.webkitRequestFullscreen;
+  if (req) { var pr = req.call(stage); if (pr && pr.catch) pr.catch(function() {}); }
+  else if (vid.webkitEnterFullscreen) vid.webkitEnterFullscreen();   // iPhone Safari: only <video> can go fullscreen
+}
+function pokeVideoCtrl() {              // show the buttons, hide them again after 3 s
+  stage.classList.add('ctrl');
+  clearTimeout(_ctrlTimer);
+  _ctrlTimer = setTimeout(function() { stage.classList.remove('ctrl'); }, 3000);
+}
+btnVideo.addEventListener('click', function() { showVideo(!_vidShown); });
+sizeBtn.addEventListener('click', function(e) { e.stopPropagation(); setMini(!_vidMini); });
+stage.addEventListener('click', function(e) { if (_vidMini && !e.target.closest('#video-ctrl')) setMini(false); });   // tap the small player = enlarge
+document.getElementById('video-fs').addEventListener('click', function(e) { e.stopPropagation(); toggleFullscreen(); });
+document.getElementById('video-close').addEventListener('click', function(e) { e.stopPropagation(); showVideo(false); });
+stage.addEventListener('dblclick', function() { if (Date.now() - _lastTouchAt > 700) toggleFullscreen(); });   // (a touch double-tap seeks instead)
+['mousemove', 'touchstart', 'click'].forEach(function(ev) { stage.addEventListener(ev, pokeVideoCtrl, { passive: true }); });
+document.addEventListener('keydown', function(e) {
+  if (!VIDEO || (e.key !== 'f' && e.key !== 'F') || e.ctrlKey || e.metaKey || e.altKey) return;
+  var tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;     // typing a search / a PIN
+  e.preventDefault();
+  toggleFullscreen();
+});
+
+// A track the USER launches opens the video (big) if it is hidden. A small player stays small and
+// a big one stays big: only the video changes. Automatic changes of track never open anything.
+function userOpensVideo(track) {
+  if (!VIDEO || !track) return;
+  if (_vidShown) { videoTrackChanged(track.id); return; }
+  _vidTrackId = track.id;       // so that opening loads the NEW track, not the previous one
+  showVideo(true);
+}
+
+// ── Keyboard + touch controls for the playback ──
+//   Left / Right : -10 s / +10 s          Up / Down : volume +5 % / -5 %  (while the big video is up)
+//   double-tap left / right half of the video : -10 s / +10 s
+//   hold 1 s on the video : x2 until release (mouse or finger)
+var SEEK_STEP = 10, VOL_STEP = 0.05, HOLD_MS = 1000;
+var _seekAcc = null, _seekTimer = null;
+var _lastTouchAt = 0, _lastTap = { t: 0, side: '' };
+var _holdTimer = null, _holdFired = false, _fastOn = false, _fastBeat = null, _holdX = 0, _holdY = 0, _hintTimer = null;
+var hintEl = document.getElementById('video-hint');
+
+function gestureOK() { return VIDEO && _vidShown && !_vidMini; }     // not in the small player (a tap there enlarges it)
+function showHint(text, side) {
+  if (gestureOK()) {
+    hintEl.textContent = text; hintEl.className = 'show ' + (side || '');
+    clearTimeout(_hintTimer); _hintTimer = setTimeout(function() { hintEl.className = ''; }, 700);
+  } else toast(text);
+}
+function hasTrack() { return PARTY ? _srv.dur > 0 : !!audio.getAttribute('src'); }
+
+function seekBy(delta) {
+  if (!hasTrack() || guestBlocked()) return;
+  if (PARTY) {
+    var dur = _srv.dur || Infinity, base = _seekAcc != null ? _seekAcc : videoClock().t;
+    var t = Math.max(0, Math.min(dur - 0.5, base + delta));
+    _seekAcc = t; _srv.pos = t; _srv.at = Date.now(); _seekHoldUntil = Date.now() + 900;
+    syncVideo();                                   // the picture follows at once; the server is told once the key bursts settle
+    clearTimeout(_seekTimer);
+    _seekTimer = setTimeout(function() {
+      var pos = _seekAcc; _seekAcc = null;
+      fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ cmd: 'seek', position: pos }) }).catch(function() {});
+    }, 150);
+  } else {
+    var d = isFinite(audio.duration) ? audio.duration : Infinity;
+    audio.currentTime = Math.max(0, Math.min(d - 0.5, audio.currentTime + delta));   // the video follows on 'seeked'
+  }
+  showHint((delta > 0 ? '+' : '\u2212') + Math.abs(delta) + ' s', delta > 0 ? 'right' : 'left');
+}
+function volumeBy(delta) {
+  if (guestBlocked()) return;
+  var v = Math.max(0, Math.min(1, Math.round((_vol + delta) * 100) / 100));
+  applyVolume(v);
+  showHint('Volume ' + Math.round(v * 100) + ' %', '');
+}
+
+document.addEventListener('keydown', function(e) {
+  var k = e.key;
+  if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'ArrowUp' && k !== 'ArrowDown') return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  var el = document.activeElement, tag = el && el.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable)) return;  // typing, or a slider that uses the arrows itself
+  if (ctxOverlay.classList.contains('open')) return;
+  if (k === 'ArrowLeft' || k === 'ArrowRight') { e.preventDefault(); seekBy(k === 'ArrowRight' ? SEEK_STEP : -SEEK_STEP); return; }
+  if (gestureOK()) { e.preventDefault(); volumeBy(k === 'ArrowUp' ? VOL_STEP : -VOL_STEP); }   // otherwise Up / Down keep scrolling the page
+});
+
+// x2 while holding
+function sendSpeed(v) {
+  fetch(API + '/command', { method: 'POST', headers: apiHeaders(), body: JSON.stringify({ cmd: 'speed', value: v }) }).catch(function() {});
+}
+function setSpeed(v) {
+  if (PARTY) {
+    var t = videoClock().t; _srv.pos = t; _srv.at = Date.now(); _srv.speed = v;     // re-anchor the clock before the rate changes
+    sendSpeed(v);
+  } else audio.playbackRate = v;
+  syncVideo();
+}
+function startFast() {
+  if (_fastOn || !hasTrack() || guestBlocked()) return;
+  _fastOn = true; _holdFired = true;
+  stage.classList.add('fast');
+  setSpeed(2);
+  if (PARTY) _fastBeat = setInterval(function() { sendSpeed(2); }, 5000);          // keeps the server's lease alive
+}
+function stopFast() {
+  if (!_fastOn) return;
+  _fastOn = false; clearInterval(_fastBeat);
+  stage.classList.remove('fast');
+  setSpeed(1);
+}
+function startHold(x, y) {
+  cancelHold(); _holdFired = false;
+  if (!gestureOK()) return;
+  _holdX = x; _holdY = y;
+  _holdTimer = setTimeout(function() { _holdTimer = null; if (gestureOK()) startFast(); }, HOLD_MS);
+}
+function cancelHold() { if (_holdTimer) { clearTimeout(_holdTimer); _holdTimer = null; } }
+function endHold() { cancelHold(); stopFast(); setTimeout(function() { _holdFired = false; }, 400); }
+
+stage.addEventListener('mousedown', function(e) {
+  if (e.button === 0 && Date.now() - _lastTouchAt > 700 && !e.target.closest('#video-ctrl')) startHold(e.clientX, e.clientY);
+});
+window.addEventListener('mouseup', endHold);
+stage.addEventListener('mouseleave', endHold);
+window.addEventListener('blur', endHold);
+document.addEventListener('visibilitychange', function() { if (document.hidden) endHold(); });
+
+stage.addEventListener('touchstart', function(e) {
+  _lastTouchAt = Date.now();
+  if (e.touches.length !== 1) { cancelHold(); return; }
+  if (!e.target.closest('#video-ctrl')) startHold(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+stage.addEventListener('touchmove', function(e) {
+  var t = e.touches[0];
+  if (_holdTimer && (Math.abs(t.clientX - _holdX) > 12 || Math.abs(t.clientY - _holdY) > 12)) cancelHold();
+}, { passive: true });
+stage.addEventListener('touchcancel', endHold);
+stage.addEventListener('touchend', function(e) {
+  _lastTouchAt = Date.now();
+  var wasHold = _holdFired;
+  endHold();
+  if (wasHold) { e.preventDefault(); return; }                       // releasing a hold is not a tap
+  if (!gestureOK() || e.target.closest('#video-ctrl')) return;
+  var t = e.changedTouches[0], r = stage.getBoundingClientRect(), now = Date.now();
+  var side = (t.clientX - r.left) < r.width / 2 ? 'left' : 'right';
+  if (now - _lastTap.t < 320 && _lastTap.side === side) {            // 2nd tap (and any further quick tap) = another jump
+    e.preventDefault();
+    seekBy(side === 'right' ? SEEK_STEP : -SEEK_STEP);
+  }
+  _lastTap = { t: now, side: side };
+}, { passive: false });
+stage.addEventListener('contextmenu', function(e) {                  // long-press on a phone would open the browser's menu
+  if (_fastOn || Date.now() - _lastTouchAt < 1500) e.preventDefault();
+});
+
+// Escape: closes the right-hand panel if it is open, otherwise hides the video.
+// (Fullscreen: the browser itself leaves fullscreen on Escape and the page keeps the normal view.)
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (fsElement()) return;
+  if (pmEl.classList.contains('open')) { closePartyModal(); e.preventDefault(); return; }
+  if (ctxOverlay.classList.contains('open')) { closeCtxMenu(); return; }
+  var tag = document.activeElement && document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;           // Escape belongs to the field (PIN, search...)
+  if (drawer.classList.contains('open')) { closeSavePicker(); closeDrawer(); e.preventDefault(); return; }
+  if (VIDEO && _vidShown) { showVideo(false); e.preventDefault(); }
+});
+
+// ── Theme switch ──
+(function () {
+  var b = document.getElementById('btn-theme');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('pitube-theme', next); } catch (e) {}
+  });
+})();
+
+// ── Drawer ──
+function openDrawer()  { document.body.classList.add('drawer-open'); drawer.classList.add('open'); drawerOverlay.classList.add('open'); renderPlaylist(); loadSavedPlaylists(); }
+function closeDrawer() { document.body.classList.remove('drawer-open'); drawer.classList.remove('open'); drawerOverlay.classList.remove('open'); }
+btnPlaylist.addEventListener('click', openDrawer);
+btnCloseDrawer.addEventListener('click', closeDrawer);
+drawerOverlay.addEventListener('click', closeDrawer);
+
+// =============================================================================
+// PARTY MODE
+// =============================================================================
+function initParty() {
+  PARTY = true;
+  document.getElementById('party-badge').classList.add('on');
+
+  // Hide audio element (audio lives on the server; the volume slider now controls mpv)
+  audio.style.display = 'none';
+
+  // QR code: party mode only. Visible by default when there is room beside the results;
+  // long-click / right-click on the logo shows or hides it (pop-up on narrow screens).
+  if (qrWide()) setQr(true);
+  onLongPress(_logoLink, toggleQr, { mouse: true });
+  _logoLink.addEventListener('click', function(e) { if (lpRecent()) e.preventDefault(); });
+  refreshLock();
+
+  // SSE connection
+  var es = new EventSource(API + '/stream');
+  es.onmessage = function(e) {
+    var state = JSON.parse(e.data);
+    applyPartyState(state);
+  };
+  es.onerror = function() {
+    // reconnects automatically
+  };
+
+  // Rewire card actions to send commands
+  // (renderGrid already uses playFromSearch / addToQueue — we override those below)
+}
+
+var _cmdPending = false;
+var _cmdTimer   = null;
+
+function sendCmd(obj) {
+  // Block SSE state application briefly so our command isn't overridden
+  _cmdPending = true;
+  clearTimeout(_cmdTimer);
+  _cmdTimer = setTimeout(function() { _cmdPending = false; }, 1500);
+
+  fetch(API + '/command', {
+    method: 'POST',
+    headers: apiHeaders(),
+    body: JSON.stringify(obj)
+  }).then(function(r) {
+    if (r.status === 403) { toast('Party locked by the master'); refreshLock(); _lastQueueSig = null; }
+    // Once server confirms, re-fetch state and unblock
+    setTimeout(function() {
+      fetch(API + '/party-state')
+        .then(function(r) { return r.json(); })
+        .then(function(s) { _cmdPending = false; applyPartyState(s); })
+        .catch(function() { _cmdPending = false; });
+    }, 300);
+  }).catch(function() { _cmdPending = false; });
+}
+
+var _lastQueueSig = null;
+var _plRev = null;
+var _firstSeen = false;
+var _openSeq = null;   // last open_seq seen (first state only sets the baseline: no video at page load)
+var IS_LOCAL = /[?&]tv\b/.test(location.search);   // the Pi's own screen (set by /mode, or open /?tv)
+
+function applyPartyState(state) {
+  // Volume (don't fight the slider while the user is dragging it)
+  if (state.volume != null && Date.now() - _volTouchedAt > 1500) setVolumeUI(state.volume / 100);
+  if (Date.now() >= _seekHoldUntil) { _srv.pos = state.position || 0; _srv.at = Date.now(); }
+  _srv.playing = !!state.is_playing && !state.loading;
+  _srv.speed = state.speed || 1; _srv.dur = state.duration || 0;
+  if (_srv.at === 0) _srv.at = Date.now();
+  var _curT = state.queue && state.queue[state.current_idx];
+  _mcCurId = _curT ? _curT.id : null;
+  if (state.multicast !== undefined && !!state.multicast !== MULTICAST) {
+    MULTICAST = !!state.multicast;
+    if (!MULTICAST) mcStop();
+    renderListen();
+  }
+  mcSync();
+  if (VIDEO) {
+    var cur = state.queue && state.queue[state.current_idx];
+    // Page opened mid-track: show its video (works even with an older server without open_seq).
+    var first = (_openSeq === null && !_firstSeen);
+    _firstSeen = true;
+    if (first && cur && !_vidShown) userOpensVideo(cur);
+    // Someone started a track by hand: the Pi's own screen opens the video too.
+    if (state.open_seq !== undefined) {
+      if (_openSeq !== null && state.open_seq !== _openSeq && IS_LOCAL && cur) userOpensVideo(cur);
+      _openSeq = state.open_seq;
+    }
+    videoTrackChanged(cur ? cur.id : null);
+    syncVideo();
+  }
+  if (state.playlists_rev !== undefined && state.playlists_rev !== _plRev) {   // another device changed a saved playlist
+    _plRev = state.playlists_rev;
+    loadSavedPlaylists();
+  }
+  if (state.locked !== undefined) {            // someone locked / unlocked the party
+    _locked = !!state.locked;
+    if (state.locked !== _lockSeen) { _lockSeen = state.locked; refreshLock(); }
+    renderLock();
+  }
+
+  if (_cmdPending) return; // ignore SSE updates while a command is in flight
+  // Update shared queue/idx
+  playlist     = state.queue || [];
+  plCurrentIdx = state.current_idx;
+
+  // Footer
+  if (playlist.length > 0 && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) {
+    var t = playlist[plCurrentIdx];
+    footerThumb.src           = t.thumbnail || '';
+    footerTitle.textContent   = t.title || '';
+    footerChan.textContent    = t.channel || '';
+  }
+
+  // Pause button
+  setPauseIcon(state.is_playing);
+
+  // Progress bar
+  if (state.duration > 0) {
+    progress.value          = (state.position / state.duration) * 100;
+    timeCur.textContent     = fmtTime(state.position);
+    timeDur.textContent     = fmtTime(state.duration);
+  }
+
+  updatePlCount();
+  // The server broadcasts every second: only rebuild the queue DOM when it really changed,
+  // otherwise taps / long-presses get lost on elements that were just replaced.
+  var sig = playlist.map(function(t) { return t.id; }).join(',') + '|' + plCurrentIdx;
+  if (sig !== _lastQueueSig) { _lastQueueSig = sig; renderPlaylist(); }
+  loadingBar.style.display = state.loading ? 'block' : 'none';
+}
+
+// Override playback functions in party mode
+var _playFromSearch   = playFromSearch;
+var _addToQueue       = addToQueue;
+var _playFromPlaylist = playFromPlaylist;
+
+function partyPlayFromSearch(idx) {
+  if (guestBlocked()) return;
+  var v = results[idx];
+  document.querySelectorAll('.card').forEach(function(c) { c.classList.remove('playing'); });
+  var activeCard = grid.querySelector('[data-idx="' + idx + '"]');
+  if (activeCard) activeCard.classList.add('playing');
+  loadingBar.style.display = 'block';
+  userOpensVideo(makeItem(v));
+  sendCmd({ cmd: 'play', track: makeItem(v) });
+}
+
+function partyAddToQueue(v, where) {
+  if (where === 'next' && guestBlocked()) return;
+  sendCmd({ cmd: where === 'next' ? 'add_next' : 'add_end', track: makeItem(v) });
+  btnPlaylist.style.background = 'var(--red)';
+  setTimeout(function() { btnPlaylist.style.background = ''; }, 300);
+}
+
+function partyPlayFromPlaylist(idx) {
+  if (guestBlocked()) return;
+  if (playlist[idx]) userOpensVideo(playlist[idx]);
+  sendCmd({ cmd: 'play_idx', idx: idx });
+}
+
+function partyTogglePause() {
+  if (guestBlocked()) return;
+  sendCmd({ cmd: 'pause_toggle' });
+}
+
+// Rewire controls when in party mode
+function activatePartyControls() {
+  playFromSearch   = partyPlayFromSearch;
+  addToQueue       = partyAddToQueue;
+  playFromPlaylist = partyPlayFromPlaylist;
+
+  // Swap pause handler (listener stays, just target changes)
+  _pauseHandler = partyTogglePause;
+
+  // Progress seek
+  progress.addEventListener('change', function() {
+    if (guestBlocked()) return;
+    var parts = timeDur.textContent.split(':');
+    var dur = parseInt(parts[0]) * 60 + parseInt(parts[1] || 0);
+    if (dur > 0) sendCmd({ cmd: 'seek', position: (progress.value / 100) * dur });
+  });
+
+  // Queue reorder / delete
+  plMove   = function(from, to) { if (guestBlocked()) return; sendCmd({ cmd: 'reorder', from: from, to: to }); };
+  plDelete = function(i)        { if (guestBlocked()) return; sendCmd({ cmd: 'remove', idx: i }); };
+
+  // Clear queue
+  document.getElementById('btn-clear-playlist').addEventListener('click', function() {
+    if (guestBlocked()) return;
+    sendCmd({ cmd: 'clear' });
+  });
+
+}
+
+// =============================================================================
+// INIT — detect mode then boot
+// =============================================================================
+// Save footer button — works in both modes
+btnSaveFooter.addEventListener('click', function() {
+  if (plCurrentIdx >= 0 && plCurrentIdx < playlist.length)
+    openSavePicker(playlist[plCurrentIdx]);
+});
+
+fetch(API + '/mode')
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    loadSavedPlaylists();
+    if (data.url) qrUrlEl.textContent = data.url.replace(/^https?:\/\//, '');
+    PIN_REQUIRED = !!data.pin;
+    if (data.local) IS_LOCAL = true;
+    VIDEO = !!data.video;
+    if (VIDEO) btnVideo.style.display = 'flex';
+    if (data.party) {
+      document.getElementById('party-badge').classList.remove('off');
+      document.getElementById('party-badge').title = 'Stop the party';
+      initParty();
+      activatePartyControls();
+    }
+  })
+  .catch(function() {
+    loadSavedPlaylists();
+  });
+</script>
+</body>
+</html>
