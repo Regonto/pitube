@@ -902,8 +902,26 @@ function addToQueue(v, where) {
 }
 
 function updatePlCount() { plCount.textContent = playlist.length; }
+restoreQueue();
+updatePlCount();
+renderPlaylist();
+
+// The queue survives a page reload (normal mode only: in Party mode the server keeps it).
+function saveQueue() {
+  if (PARTY) return;
+  try { localStorage.setItem('pitube-queue', JSON.stringify({ q: playlist.slice(0, 200), i: plCurrentIdx })); } catch (e) {}
+}
+function restoreQueue() {
+  try {
+    var d = JSON.parse(localStorage.getItem('pitube-queue') || 'null');
+    if (!d || !Array.isArray(d.q)) return;
+    playlist = d.q.filter(function(t) { return t && typeof t.id === 'string'; }).slice(0, 200);
+    plCurrentIdx = (typeof d.i === 'number' && d.i >= 0 && d.i < playlist.length) ? d.i : -1;
+  } catch (e) {}
+}
 
 function renderPlaylist() {
+  saveQueue();
   playlistList.innerHTML = '';
   playlistEmpty.style.display = playlist.length === 0 ? 'block' : 'none';
   playlist.forEach(function(item, i) {
@@ -1255,27 +1273,84 @@ function playFromPlaylist(idx, auto) {      // auto = the previous track just en
 }
 
 var _audioReq = 0;
+// The next track's stream address is fetched while the current one plays: when it ends, the next one can
+// start at once, with no network wait. (A phone with the screen off freezes the page during a wait, and the
+// next song then never started.)
+var _nextCache = {};                 // id -> { at, data }
+var NEXT_TTL = 45 * 60 * 1000;       // stream addresses stay valid for hours
+function cachedAudio(id) {
+  var h = _nextCache[id];
+  return (h && Date.now() - h.at < NEXT_TTL) ? h.data : null;
+}
+function prefetchNext() {
+  if (PARTY) return;
+  var n = playlist[plCurrentIdx + 1];
+  if (!n || cachedAudio(n.id)) return;
+  var id = n.id;
+  fetch(API + '/audio-url?id=' + encodeURIComponent(id))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d && d.url) {
+        var keys = Object.keys(_nextCache);
+        if (keys.length > 8) delete _nextCache[keys[0]];
+        _nextCache[id] = { at: Date.now(), data: d };
+      }
+    }).catch(function() {});
+}
+function applyAudioInfo(data) {
+  if (data.thumbnail) footerThumb.src = data.thumbnail;
+  if (data.title)     footerTitle.textContent = data.title;
+  if (data.channel)   footerChan.textContent  = data.channel;
+  setMediaSession(data);
+  audio.src = data.url;
+  audio.load();
+  return audio.play();
+}
+function setMediaSession(d) {          // lock screen / notification controls, and keeps the sound alive in the background
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: d.title || footerTitle.textContent, artist: d.channel || footerChan.textContent,
+      artwork: d.thumbnail ? [{ src: d.thumbnail, sizes: '480x360', type: 'image/jpeg' }] : []
+    });
+  } catch (e) {}
+}
+if ('mediaSession' in navigator) {
+  try {
+    navigator.mediaSession.setActionHandler('nexttrack', function() { if (!PARTY) playFromPlaylist(plCurrentIdx + 1, true); });
+    navigator.mediaSession.setActionHandler('previoustrack', function() { if (!PARTY && plCurrentIdx > 0) playFromPlaylist(plCurrentIdx - 1, true); });
+  } catch (e) {}
+}
+
 function startAudio(v) {
   videoTrackChanged(v.id);
   footerThumb.src = v.thumbnail;
   footerTitle.textContent = v.title;
   footerChan.textContent  = v.channel;
+  var req = ++_audioReq;                          // an answer that arrives after a newer request is ignored
+  var hit = cachedAudio(v.id);
+  if (hit) {                                      // already looked up: start right now, synchronously
+    loadingBar.style.display = 'none';
+    var p = applyAudioInfo(hit);
+    if (p && p.catch) p.catch(function(err) {
+      if (req !== _audioReq) return;
+      delete _nextCache[v.id];                    // the address may be stale: look it up again, normally
+      if (err && err.name === 'NotAllowedError') return;
+      startAudio(v);
+    });
+    return;
+  }
   loadingBar.style.display = 'block';
   audio.pause();
   audio.removeAttribute('src'); audio.load();    // (not src = '': that fires an "error" event, which used to start the track a second time)
-  var req = ++_audioReq;                          // an answer that arrives after a newer request is ignored
 
   fetch(API + '/audio-url?id=' + v.id)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (req !== _audioReq) return null;
       if (data.error) throw new Error(data.error);
-      if (data.thumbnail) footerThumb.src = data.thumbnail;
-      if (data.title)     footerTitle.textContent = data.title;
-      if (data.channel)   footerChan.textContent  = data.channel;
-      audio.src = data.url;
-      audio.load();
-      return audio.play();
+      _nextCache[v.id] = { at: Date.now(), data: data };
+      return applyAudioInfo(data);
     })
     .then(function() {
       if (req === _audioReq) loadingBar.style.display = 'none';
@@ -1297,10 +1372,11 @@ audio.addEventListener('error', function() {
   if (!audio.getAttribute('src')) return;         // emptied on purpose, not a real failure
   if (!audioRetried && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) {
     audioRetried = true;
+    delete _nextCache[playlist[plCurrentIdx].id];   // the saved address may be the stale one
     startAudio(playlist[plCurrentIdx]);
   } else { audioRetried = false; }
 });
-audio.addEventListener('playing', function() { audioRetried = false; });
+audio.addEventListener('playing', function() { audioRetried = false; prefetchNext(); });
 
 // ── Long-press / right-click context menu ──
 var ctxOverlay = document.getElementById('ctx-overlay');
