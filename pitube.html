@@ -929,7 +929,7 @@ function restoreQueue() {
 // Where we were in the current track (normal mode): written every couple of seconds, so a reload resumes there.
 var _resumeAt = null, _posSavedAt = 0, _loadingId = null;
 function savePos(force) {
-  if (PARTY || plCurrentIdx < 0 || !playlist[plCurrentIdx] || !audio.getAttribute('src')) return;
+  if (PARTY || _resumeAt || plCurrentIdx < 0 || !playlist[plCurrentIdx] || !audio.getAttribute('src')) return;
   var now = Date.now();
   if (!force && now - _posSavedAt < 2000) return;
   var t = audio.currentTime || 0;
@@ -1325,12 +1325,18 @@ function prefetchNext() {
       }
     }).catch(function() {});
 }
-audio.addEventListener('loadedmetadata', function() {
+// Jump to the saved position as soon as the browser allows it, and keep trying until it really is there
+// (the position stays "pending" until then: nothing may overwrite it, and the display keeps showing it).
+function applyResume() {
   if (PARTY || !_resumeAt || _resumeAt.id !== _loadingId) return;
   var t = _resumeAt.t;
-  _resumeAt = null;
-  if (isFinite(audio.duration) && t > audio.duration - 5) return;      // it was nearly over: start again
+  if (isFinite(audio.duration) && t > audio.duration - 5) { _resumeAt = null; return; }   // it was nearly over: start again
+  if (audio.currentTime >= t - 2) { _resumeAt = null; return; }                            // already there
   try { audio.currentTime = t; } catch (e) {}
+}
+['loadedmetadata', 'canplay', 'playing'].forEach(function(ev) { audio.addEventListener(ev, applyResume); });
+audio.addEventListener('seeked', function() {
+  if (_resumeAt && audio.currentTime >= _resumeAt.t - 2) _resumeAt = null;
 });
 function applyAudioInfo(data) {
   if (data.thumbnail) footerThumb.src = data.thumbnail;
@@ -1593,12 +1599,14 @@ audio.addEventListener('timeupdate', function() {
   if (PARTY) return;
   if (!audio.duration) return;
   savePos(false);
-  progress.value = (audio.currentTime / audio.duration) * 100;
-  timeCur.textContent = fmtTime(audio.currentTime);
+  var _shown = _resumeAt ? _resumeAt.t : audio.currentTime;      // while jumping to the saved position, show that one
+  progress.value = (_shown / audio.duration) * 100;
+  timeCur.textContent = fmtTime(_shown);
   timeDur.textContent = fmtTime(audio.duration);
 });
 progress.addEventListener('input', function() {
   if (PARTY) return;
+  _resumeAt = null;                               // the user chose a position: forget the saved one
   if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
 });
 // ── Volume (speaker button opens a slider popover) ──
@@ -2145,6 +2153,7 @@ function seekBy(delta) {
     }, 150);
   } else {
     var d = isFinite(audio.duration) ? audio.duration : Infinity;
+    _resumeAt = null;
     audio.currentTime = Math.max(0, Math.min(d - 0.5, audio.currentTime + delta));   // the video follows on 'seeked'
   }
   showHint((delta > 0 ? '+' : '\u2212') + Math.abs(delta) + ' s', delta > 0 ? 'right' : 'left');
