@@ -1335,6 +1335,13 @@ function applyResume() {
   try { audio.currentTime = t; } catch (e) {}
 }
 ['loadedmetadata', 'canplay', 'playing'].forEach(function(ev) { audio.addEventListener(ev, applyResume); });
+// ...and if it still is not there, insist for a few seconds
+var _resumeTries = 0;
+setInterval(function() {
+  if (!_resumeAt || PARTY || !audio.getAttribute('src') || audio.readyState < 1) return;
+  if (++_resumeTries > 20) { _resumeAt = null; return; }       // give up after ~10 s: play from where it is
+  applyResume();
+}, 500);
 audio.addEventListener('seeked', function() {
   if (_resumeAt && audio.currentTime >= _resumeAt.t - 2) _resumeAt = null;
 });
@@ -1343,8 +1350,11 @@ function applyAudioInfo(data) {
   if (data.title)     footerTitle.textContent = data.title;
   if (data.channel)   footerChan.textContent  = data.channel;
   setMediaSession(data);
-  audio.src = data.url;
+  var at = (!PARTY && _resumeAt && _resumeAt.id === _loadingId) ? _resumeAt.t : 0;
+  // "#t=" (media fragment): the browser itself starts reading at that second, which is more reliable than a seek afterwards
+  audio.src = data.url + (at > 1 ? '#t=' + Math.floor(at) : '');
   audio.load();
+  _resumeTries = 0;
   return audio.play();
 }
 function setMediaSession(d) {          // lock screen / notification controls, and keeps the sound alive in the background
