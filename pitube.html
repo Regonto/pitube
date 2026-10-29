@@ -1328,11 +1328,13 @@ function prefetchNext() {
 }
 // Jump to the saved position as soon as the browser allows it, and keep trying until it really is there
 // (the position stays "pending" until then: nothing may overwrite it, and the display keeps showing it).
+function dbgResume(msg) { try { console.log('[pitube resume] ' + msg + ' | t=' + audio.currentTime.toFixed(1) + ' dur=' + audio.duration + ' ready=' + audio.readyState + ' seekable=' + (audio.seekable.length ? audio.seekable.end(audio.seekable.length - 1).toFixed(0) : 'none')); } catch (e) {} }
 function applyResume() {
   if (PARTY || !_resumeAt || _resumeAt.id !== _loadingId) return;
   var t = _resumeAt.t;
-  if (isFinite(audio.duration) && t > audio.duration - 5) { _resumeAt = null; return; }   // it was nearly over: start again
-  if (audio.currentTime >= t - 2) { _resumeAt = null; return; }                            // already there
+  dbgResume('apply, wanted ' + t);
+  if (isFinite(audio.duration) && t > audio.duration - 5) { dbgResume('dropped: saved position is beyond the duration'); _resumeAt = null; return; }   // it was nearly over: start again
+  if (audio.currentTime >= t - 2) { dbgResume('reached'); _resumeAt = null; return; }                            // already there
   try { audio.currentTime = t; } catch (e) {}
 }
 ['loadedmetadata', 'canplay', 'playing'].forEach(function(ev) { audio.addEventListener(ev, applyResume); });
@@ -1344,6 +1346,7 @@ setInterval(function() {
   applyResume();
 }, 500);
 audio.addEventListener('seeked', function() {
+  dbgResume('seeked');
   if (_resumeAt && audio.currentTime >= _resumeAt.t - 2) _resumeAt = null;
 });
 function applyAudioInfo(data) {
@@ -1352,6 +1355,7 @@ function applyAudioInfo(data) {
   if (data.channel)   footerChan.textContent  = data.channel;
   setMediaSession(data);
   var at = (!PARTY && _resumeAt && _resumeAt.id === _loadingId) ? _resumeAt.t : 0;
+  try { console.log('[pitube resume] start track ' + _loadingId + ', saved position ' + (_resumeAt ? _resumeAt.id + '@' + _resumeAt.t : 'none') + ', using ' + at); } catch (e) {}
   // "#t=" (media fragment): the browser itself starts reading at that second, which is more reliable than a seek afterwards
   audio.src = data.url + (at > 1 ? '#t=' + Math.floor(at) : '');
   audio.load();
@@ -1417,6 +1421,7 @@ function startAudio(v) {
 }
 
 audio.addEventListener('ended', function() {
+  dbgResume('ended: position cleared');
   clearPos();
   var next = plCurrentIdx + 1;
   if (next < playlist.length) playFromPlaylist(next, true);
