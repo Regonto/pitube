@@ -905,6 +905,7 @@ function updatePlCount() { plCount.textContent = playlist.length; }
 restoreQueue();
 updatePlCount();
 renderPlaylist();
+setPauseIcon(false);                               // nothing plays yet: the button is a Play button
 restorePos();
 if (_resumeAt) {                                  // show where we were; pressing play resumes there
   var _rt = playlist[plCurrentIdx];
@@ -1339,7 +1340,7 @@ function applyResume() {
 var _resumeTries = 0;
 setInterval(function() {
   if (!_resumeAt || PARTY || !audio.getAttribute('src') || audio.readyState < 1) return;
-  if (++_resumeTries > 20) { _resumeAt = null; return; }       // give up after ~10 s: play from where it is
+  if (++_resumeTries > 20) { _resumeAt = null; toast('Could not jump to the saved position'); return; }   // give up after ~10 s
   applyResume();
 }, 500);
 audio.addEventListener('seeked', function() {
@@ -1426,6 +1427,9 @@ audio.addEventListener('error', function() {
   if (!audio.getAttribute('src')) return;         // emptied on purpose, not a real failure
   if (!audioRetried && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) {
     audioRetried = true;
+    var _ec = audio.error ? audio.error.code : 0;
+    toast('Playback error' + (_ec ? ' (code ' + _ec + ')' : '') + ', retrying...');
+    restorePos();                                   // a retry must come back to where we were, not to 0
     delete _nextCache[playlist[plCurrentIdx].id];   // the saved address may be the stale one
     startAudio(playlist[plCurrentIdx]);
   } else { audioRetried = false; }
