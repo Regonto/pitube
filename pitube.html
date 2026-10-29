@@ -905,6 +905,12 @@ function updatePlCount() { plCount.textContent = playlist.length; }
 restoreQueue();
 updatePlCount();
 renderPlaylist();
+restorePos();
+if (_resumeAt) {                                  // show where we were; pressing play resumes there
+  var _rt = playlist[plCurrentIdx];
+  footerThumb.src = _rt.thumbnail || ''; footerTitle.textContent = _rt.title || ''; footerChan.textContent = _rt.channel || '';
+  timeCur.textContent = fmtTime(_resumeAt.t);
+}
 
 // The queue survives a page reload (normal mode only: in Party mode the server keeps it).
 function saveQueue() {
@@ -919,6 +925,28 @@ function restoreQueue() {
     plCurrentIdx = (typeof d.i === 'number' && d.i >= 0 && d.i < playlist.length) ? d.i : -1;
   } catch (e) {}
 }
+
+// Where we were in the current track (normal mode): written every couple of seconds, so a reload resumes there.
+var _resumeAt = null, _posSavedAt = 0, _loadingId = null;
+function savePos(force) {
+  if (PARTY || plCurrentIdx < 0 || !playlist[plCurrentIdx] || !audio.getAttribute('src')) return;
+  var now = Date.now();
+  if (!force && now - _posSavedAt < 2000) return;
+  var t = audio.currentTime || 0;
+  if (!(t > 1)) return;                       // do not erase a saved position with the 0 of a track that is only loading
+  _posSavedAt = now;
+  try { localStorage.setItem('pitube-pos', JSON.stringify({ id: playlist[plCurrentIdx].id, t: Math.floor(t) })); } catch (e) {}
+}
+function restorePos() {
+  try {
+    var d = JSON.parse(localStorage.getItem('pitube-pos') || 'null');
+    if (d && typeof d.id === 'string' && typeof d.t === 'number' && d.t > 1 &&
+        plCurrentIdx >= 0 && playlist[plCurrentIdx] && playlist[plCurrentIdx].id === d.id) _resumeAt = d;
+  } catch (e) {}
+}
+function clearPos() { _resumeAt = null; try { localStorage.removeItem('pitube-pos'); } catch (e) {} }
+window.addEventListener('pagehide', function() { savePos(true); });
+document.addEventListener('visibilitychange', function() { if (document.hidden) savePos(true); });
 
 function renderPlaylist() {
   saveQueue();
@@ -1297,6 +1325,13 @@ function prefetchNext() {
       }
     }).catch(function() {});
 }
+audio.addEventListener('loadedmetadata', function() {
+  if (PARTY || !_resumeAt || _resumeAt.id !== _loadingId) return;
+  var t = _resumeAt.t;
+  _resumeAt = null;
+  if (isFinite(audio.duration) && t > audio.duration - 5) return;      // it was nearly over: start again
+  try { audio.currentTime = t; } catch (e) {}
+});
 function applyAudioInfo(data) {
   if (data.thumbnail) footerThumb.src = data.thumbnail;
   if (data.title)     footerTitle.textContent = data.title;
@@ -1328,6 +1363,8 @@ function startAudio(v) {
   footerTitle.textContent = v.title;
   footerChan.textContent  = v.channel;
   var req = ++_audioReq;                          // an answer that arrives after a newer request is ignored
+  _loadingId = v.id;
+  if (_resumeAt && _resumeAt.id !== v.id) _resumeAt = null;     // another track was chosen: forget the old position
   var hit = cachedAudio(v.id);
   if (hit) {                                      // already looked up: start right now, synchronously
     loadingBar.style.display = 'none';
@@ -1363,6 +1400,7 @@ function startAudio(v) {
 }
 
 audio.addEventListener('ended', function() {
+  clearPos();
   var next = plCurrentIdx + 1;
   if (next < playlist.length) playFromPlaylist(next, true);
 });
@@ -1530,7 +1568,10 @@ function setPauseIcon(playing) {
 
 // ── Controls (normal mode) ──
 function togglePause() {
-  if (!audio.src) return;
+  if (!audio.getAttribute('src')) {
+    if (!PARTY && plCurrentIdx >= 0 && plCurrentIdx < playlist.length) startAudio(playlist[plCurrentIdx]);   // after a reload
+    return;
+  }
   if (audio.paused) {
     audio.play().then(function() { setPauseIcon(true); }).catch(function() { setPauseIcon(false); });
   } else {
@@ -1551,6 +1592,7 @@ audio.addEventListener('waiting', function() { if (!PARTY) setPauseIcon(false); 
 audio.addEventListener('timeupdate', function() {
   if (PARTY) return;
   if (!audio.duration) return;
+  savePos(false);
   progress.value = (audio.currentTime / audio.duration) * 100;
   timeCur.textContent = fmtTime(audio.currentTime);
   timeDur.textContent = fmtTime(audio.duration);
