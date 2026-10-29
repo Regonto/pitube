@@ -902,6 +902,7 @@ function addToQueue(v, where) {
 }
 
 function updatePlCount() { plCount.textContent = playlist.length; }
+var _resumeAt = null, _posSavedAt = 0, _loadingId = null;   // (declared before the restore below runs)
 restoreQueue();
 updatePlCount();
 renderPlaylist();
@@ -928,7 +929,6 @@ function restoreQueue() {
 }
 
 // Where we were in the current track (normal mode): written every couple of seconds, so a reload resumes there.
-var _resumeAt = null, _posSavedAt = 0, _loadingId = null;
 function savePos(force) {
   if (PARTY || _resumeAt || plCurrentIdx < 0 || !playlist[plCurrentIdx] || !audio.getAttribute('src')) return;
   var now = Date.now();
